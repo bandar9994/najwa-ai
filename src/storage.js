@@ -18,6 +18,7 @@ const DEFAULT_SETTINGS = {
   defaultModel: { provider: 'ollama', model: '' },
   autoTitle: true,
   sendOnEnter: true,
+  replyStyle: 'sentences',  // how replies appear while written: 'sentences', 'words' or 'whole'
   temperature: 0.7,
   maxTokens: 0,
   historyLimit: 0,

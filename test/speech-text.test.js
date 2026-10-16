@@ -4,7 +4,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
-const { languageOf, speakable, nextChunk } = require('../renderer/speech-text.js');
+const { languageOf, speakable, nextChunk, shownWhileWriting } = require('../renderer/speech-text.js');
 
 test('languageOf picks the script most letters are in', () => {
   assert.strictEqual(languageOf('مرحبا، كيف حالك؟'), 'ar');
@@ -107,4 +107,23 @@ test('nextChunk reads a finished mixed Arabic and English reply in pieces', () =
   while ((c = nextChunk(long, at, true))) { pieces.push(c.chunk); at = c.next; }
   assert.strictEqual(pieces.join(''), long);
   assert.ok(pieces.length >= 3);
+});
+
+test('shownWhileWriting: a sentence at a time', () => {
+  assert.equal(shownWhileWriting('Hello there. How are', 'sentences'), 'Hello there.');
+  assert.equal(shownWhileWriting('Hello there', 'sentences'), '');
+  assert.equal(shownWhileWriting('مرحبا بك؟ كيف', 'sentences'), 'مرحبا بك؟');
+  assert.equal(shownWhileWriting('# Title\nFirst line', 'sentences'), '# Title\n');
+  // "2." starting a list item isn't the end of a sentence.
+  assert.equal(shownWhileWriting('Steps:\n1. Open it\n2. Click', 'sentences'), 'Steps:\n1. Open it\n');
+  // 3.14 isn't a sentence end either (no space after the dot).
+  assert.equal(shownWhileWriting('Pi is 3.14 or so', 'sentences'), '');
+  // Inside a code block still being written: whole lines.
+  assert.equal(shownWhileWriting('Code:\n```js\nconst a = 1;\nconst b', 'sentences'), 'Code:\n```js\nconst a = 1;\n');
+});
+
+test('shownWhileWriting: word by word and all at once', () => {
+  assert.equal(shownWhileWriting('Hello there. How are', 'words'), 'Hello there. How are');
+  assert.equal(shownWhileWriting('Hello there. How are', 'whole'), '');
+  assert.equal(shownWhileWriting('Hello there. How are', undefined), 'Hello there.');
 });

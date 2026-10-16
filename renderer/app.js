@@ -753,10 +753,13 @@ function fillContent(container, msg) {
     details.open = thinkingOpen.get(msg) === true;
     container.append(details);
   }
-  const body = renderMarkdown(answer);
+  // While a reply is being written, show it as the reply style setting says
+  // (by default a sentence at a time). The finished reply is shown whole.
+  const shown = msg.pending ? SpeechText.shownWhileWriting(answer, S.settings.replyStyle) : answer;
+  const body = renderMarkdown(shown);
   if (msg.pending) body.classList.add('typing');
   container.append(...body.childNodes.length ? [body] : []);
-  if (msg.pending && !answer && thinking == null && !(msg.tools && msg.tools.length)) {
+  if (msg.pending && !shown.trim() && (thinking == null || done) && !(msg.tools && msg.tools.length)) {
     container.append(h('span', { class: 'typing' }));
     if (msg.waiting && msg.model) {
       container.append(h('div', { class: 'waiting', text: `Waiting for ${displayModel(msg.model.model)} to start. Large models can take a minute to load the first time.` }));
@@ -2071,8 +2074,14 @@ function openSettings(tab = 'general') {
         h('option', { value: 'light', text: 'Light' }),
         h('option', { value: 'dark', text: 'Dark' })), s, 'theme');
       theme.value = s.theme;
+      const replyStyle = bind(h('select', { class: 'select' },
+        h('option', { value: 'sentences', text: 'A sentence at a time' }),
+        h('option', { value: 'words', text: 'Word by word' }),
+        h('option', { value: 'whole', text: 'All at once, when finished' })), s, 'replyStyle');
+      replyStyle.value = s.replyStyle || 'sentences';
       return [
         field('Theme', theme),
+        field('How replies appear', replyStyle, 'How a reply shows up while it\'s being written.'),
         check('Press Enter to send (Shift+Enter for a new line)', s, 'sendOnEnter'),
         check('Name new chats automatically with AI', s, 'autoTitle'),
         field('Temperature', bind(h('input', { class: 'input', type: 'number', step: '0.1', min: '0', max: '2', value: s.temperature }), s, 'temperature'),
