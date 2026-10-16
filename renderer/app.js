@@ -39,6 +39,7 @@ const el = {
   attachInput: $('#attachInput'),
   attachments: $('#attachments'),
   composer: $('#composer'),
+  jumpBtn: $('#jumpBtn'),
   hint: $('#composerHint'),
   chatMenu: $('#chatMenu'),
   modalRoot: $('#modalRoot'),
@@ -608,6 +609,8 @@ function renderChat() {
   const wrap = h('div', { class: 'msg-wrap' });
   chat.messages.forEach((m, i) => wrap.append(renderMessage(chat, m, i)));
   el.messages.append(wrap);
+  fitReplySpace();
+  updateJumpButton();
 }
 
 function renderWelcome() {
@@ -753,10 +756,13 @@ function fillContent(container, msg) {
     details.open = thinkingOpen.get(msg) === true;
     container.append(details);
   }
-  const body = renderMarkdown(answer);
+  // While a reply is being written, show it as the reply style setting says
+  // (by default a sentence at a time). The finished reply is shown whole.
+  const shown = msg.pending ? SpeechText.shownWhileWriting(answer, S.settings.replyStyle) : answer;
+  const body = renderMarkdown(shown);
   if (msg.pending) body.classList.add('typing');
   container.append(...body.childNodes.length ? [body] : []);
-  if (msg.pending && !answer && thinking == null && !(msg.tools && msg.tools.length)) {
+  if (msg.pending && !shown.trim() && (thinking == null || done) && !(msg.tools && msg.tools.length)) {
     container.append(h('span', { class: 'typing' }));
     if (msg.waiting && msg.model) {
       container.append(h('div', { class: 'waiting', text: `Waiting for ${displayModel(msg.model.model)} to start. Large models can take a minute to load the first time.` }));
@@ -854,6 +860,53 @@ function scrollToBottom() {
   el.messages.scrollTop = el.messages.scrollHeight;
 }
 
+// Like Claude: sending a message moves it to the top of the screen, and the
+// reply is written below it without moving the page, so you can read at your
+// own pace. The newest reply gets room to fill the screen (so the message can
+// sit at the top) until another chat is opened.
+let replySpace = null;  // { id, lead }: the reply with room, and how far below the top it starts
+
+function messageTop(node) {
+  return node.getBoundingClientRect().top - el.messages.getBoundingClientRect().top + el.messages.scrollTop;
+}
+
+function fitReplySpace() {
+  const node = replySpace && el.messages.querySelector(`.msg[data-id="${replySpace.id}"]`);
+  if (!node) return;
+  const padBottom = parseFloat(getComputedStyle(el.messages).paddingBottom) || 0;
+  node.style.minHeight = `${Math.max(0, el.messages.clientHeight - replySpace.lead - padBottom)}px`;
+}
+
+function scrollToReply(msg) {
+  const node = el.messages.querySelector(`.msg[data-id="${msg.id}"]`);
+  if (!node) return scrollToBottom();
+  const m = el.messages;
+  const padTop = parseFloat(getComputedStyle(m).paddingTop) || 0;
+  const prev = node.previousElementSibling;
+  const replyTop = messageTop(node);
+  // Your message at the top; a long one scrolls up so the reply starts
+  // a little above the middle of the screen.
+  const top = Math.max(0, Math.max(prev ? messageTop(prev) - padTop : replyTop - padTop, replyTop - m.clientHeight * 0.4));
+  replySpace = { id: msg.id, lead: replyTop - top };
+  fitReplySpace();
+  m.scrollTop = top;
+  updateJumpButton();
+}
+
+// The ↓ button shows when the reply goes on below the screen.
+function updateJumpButton() {
+  const last = el.messages.querySelector('.msg:last-child .body > :last-child');
+  const below = last ? last.getBoundingClientRect().bottom - el.messages.getBoundingClientRect().bottom : 0;
+  el.jumpBtn.hidden = !(below > 24);
+}
+
+function jumpToLatest() {
+  const last = el.messages.querySelector('.msg:last-child .body > :last-child');
+  if (!last) return;
+  const below = last.getBoundingClientRect().bottom - el.messages.getBoundingClientRect().bottom;
+  el.messages.scrollBy({ top: below + 16, behavior: 'smooth' });
+}
+
 const thinkingOpen = new WeakMap();  // message -> thinking box open?
 const pendingRender = new Set();
 let renderQueued = false;
@@ -868,13 +921,12 @@ function scheduleMessageRender(chat, msg) {
   renderQueued = true;
   const run = () => {
     renderQueued = false;
-    const stick = nearBottom();
     for (const m of pendingRender) {
       const node = el.messages.querySelector(`.msg[data-id="${m.id}"] .content`);
       if (node) fillContent(node, m);
     }
     pendingRender.clear();
-    if (stick) scrollToBottom();
+    updateJumpButton();
   };
   if (S.info.mobile) setTimeout(() => requestAnimationFrame(run), 250);
   else requestAnimationFrame(run);
@@ -1201,6 +1253,7 @@ async function openChat(id) {
   S.current = chat;
   S.state.lastChatId = id;
   api.state.save({ lastChatId: id });
+  replySpace = null;
   renderChat();
   renderSidebar();
   el.input.value = (S.state.drafts || {})[id] || '';
@@ -1215,6 +1268,7 @@ function newChat() {
   stopReading();
   dropDictation();
   S.current = null;
+  replySpace = null;
   S.newChatModel = null;
   S.newChatAssistantId = null;
   S.state.lastChatId = null;
@@ -1548,7 +1602,7 @@ async function runCompletion(chat) {
   chat.updatedAt = Date.now();
   if (S.current === chat) {
     renderChat();
-    scrollToBottom();
+    scrollToReply(msg);
   }
   voiceReplyStarted(chat, msg);
   await saveChatNow(chat);
@@ -1596,11 +1650,7 @@ async function runCompletion(chat) {
   voiceReplyUpdated(msg);
   chat.updatedAt = Date.now();
   await saveChatNow(chat);
-  if (S.current === chat) {
-    const stick = nearBottom();
-    renderChat();
-    if (stick) scrollToBottom();
-  }
+  if (S.current === chat) renderChat();
   updateComposer();
 
   // Learn lasting facts from what the user just said. On the phone's own
@@ -2071,8 +2121,14 @@ function openSettings(tab = 'general') {
         h('option', { value: 'light', text: 'Light' }),
         h('option', { value: 'dark', text: 'Dark' })), s, 'theme');
       theme.value = s.theme;
+      const replyStyle = bind(h('select', { class: 'select' },
+        h('option', { value: 'sentences', text: 'A sentence at a time' }),
+        h('option', { value: 'words', text: 'Word by word' }),
+        h('option', { value: 'whole', text: 'All at once, when finished' })), s, 'replyStyle');
+      replyStyle.value = s.replyStyle || 'sentences';
       return [
         field('Theme', theme),
+        field('How replies appear', replyStyle, 'How a reply shows up while it\'s being written.'),
         check('Press Enter to send (Shift+Enter for a new line)', s, 'sendOnEnter'),
         check('Name new chats automatically with AI', s, 'autoTitle'),
         field('Temperature', bind(h('input', { class: 'input', type: 'number', step: '0.1', min: '0', max: '2', value: s.temperature }), s, 'temperature'),
@@ -2659,6 +2715,11 @@ function bindEvents() {
   el.modelSelect.addEventListener('change', onModelChange);
   el.assistantSelect.addEventListener('change', onAssistantChange);
   el.sendBtn.addEventListener('click', send);
+  el.jumpBtn.addEventListener('click', jumpToLatest);
+  el.messages.addEventListener('scroll', updateJumpButton, { passive: true });
+  // The screen changes size (a phone's keyboard, a resized window): keep the
+  // reply's room, so the page doesn't jump.
+  new ResizeObserver(() => { fitReplySpace(); updateJumpButton(); }).observe(el.messages);
   el.micBtn.addEventListener('click', toggleDictation);
   el.attachBtn.addEventListener('click', () => el.attachInput.click());
   el.attachInput.addEventListener('change', () => {

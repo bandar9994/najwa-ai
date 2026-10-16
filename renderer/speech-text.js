@@ -4,7 +4,8 @@
 
 // Turning replies into speech: plain text a voice can read (no Markdown,
 // links or code), the language to read it in, and sentence-sized pieces so a
-// reply can be read aloud while it's still being written.
+// reply can be read aloud while it's still being written. Also how much of a
+// reply to show while it's being written (shownWhileWriting).
 // Loaded before app.js (window.SpeechText) and by the tests (require).
 
 (function (root) {
@@ -90,7 +91,27 @@
     return { chunk, next: from + cut };
   }
 
-  const api = { languageOf, speakable, nextChunk };
+  // How much of a reply to show while it's still being written (the reply
+  // style setting): 'words' shows everything as it comes, 'whole' nothing
+  // until it's finished, and 'sentences' only finished sentences and lines,
+  // so text appears a sentence at a time. Code blocks show whole lines.
+  function shownWhileWriting(text, style) {
+    const s = String(text || '');
+    if (style === 'words') return s;
+    if (style === 'whole') return '';
+    if ((s.match(/```/g) || []).length % 2) return s.slice(0, s.lastIndexOf('\n') + 1);
+    const boundary = /[.!?؟…](?=\s)|\n/g;
+    let cut = 0;
+    let m;
+    while ((m = boundary.exec(s))) {
+      // "2." starting a numbered list item isn't the end of a sentence.
+      if (m[0] === '.' && /(^|\n)\s*\d+$/.test(s.slice(0, m.index))) continue;
+      cut = m.index + m[0].length;
+    }
+    return s.slice(0, cut);
+  }
+
+  const api = { languageOf, speakable, nextChunk, shownWhileWriting };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.SpeechText = api;
 })(typeof window !== 'undefined' ? window : globalThis);
