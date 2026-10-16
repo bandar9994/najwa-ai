@@ -188,8 +188,7 @@ The same chat continues on your phone and your computer, even with a different m
 | **Mac** (M1 and newer) | [Najwa-AI-macOS-AppleSilicon.dmg](https://github.com/bandar9994/najwa-ai/releases/download/desktop-latest/Najwa-AI-macOS-AppleSilicon.dmg) | Drag Najwa AI to Applications. The first time, right-click it and choose **Open**. |
 | **Mac** (Intel) | [Najwa-AI-macOS-Intel.dmg](https://github.com/bandar9994/najwa-ai/releases/download/desktop-latest/Najwa-AI-macOS-Intel.dmg) | Same as above. |
 | **Linux** | [AppImage](https://github.com/bandar9994/najwa-ai/releases/download/desktop-latest/Najwa-AI-Linux.AppImage) · [.deb](https://github.com/bandar9994/najwa-ai/releases/download/desktop-latest/Najwa-AI-Linux.deb) | |
-
-iOS is on the way.
+| **iPhone** | [Najwa-AI-iOS-unsigned.ipa](https://github.com/bandar9994/najwa-ai/releases/download/ios-latest/Najwa-AI-iOS-unsigned.ipa) | Not on the App Store yet. Sign it for your iPhone first: upload it to a signing service such as Signulous, or install it with Sideloadly or AltStore and your Apple ID. |
 
 ## Get started in three steps
 

@@ -78,10 +78,22 @@ const MOBILE_DEFAULTS = {
 
 const ready = Storage.open(fsBackend, { defaults: MOBILE_DEFAULTS });
 
-// Google sign-in for Drive sync, through Google Play services
-// (android/.../GoogleAuthPlugin.java). Play services keeps the grant and
-// renews tokens; we only cache the current access token for a while.
+// Google sign-in for Drive sync: through Google Play services on Android
+// (android/.../GoogleAuthPlugin.java), and Apple's sign-in sheet on iPhone
+// (native/llama/ios/.../GoogleAuthPlugin.swift). The plugin keeps the grant
+// and renews tokens; we only cache the current access token for a while.
 const GoogleAuth = registerPlugin('GoogleAuth');
+// On iPhone it needs the Google client ID in the build (Info.plist), so ask.
+async function googleAuthAvailable() {
+  if (!isNative || !Capacitor.isPluginAvailable('GoogleAuth')) return false;
+  if (Capacitor.getPlatform() !== 'ios') return true;
+  try {
+    return !!(await GoogleAuth.status()).configured;
+  } catch {
+    return false;
+  }
+}
+
 function nativeGoogleAuth() {
   let cached = null;  // { token, until }
   const call = async (method, opts) => {
@@ -120,7 +132,7 @@ const syncReady = ready.then(async (storage) => {
   const sync = new Sync({
     storage,
     device: `phone (${Capacitor.getPlatform()})`,
-    googleAuth: isNative && Capacitor.isPluginAvailable('GoogleAuth') ? nativeGoogleAuth() : null,
+    googleAuth: (await googleAuthAvailable()) ? nativeGoogleAuth() : null,
     onEvent: (evt) => {
       for (const cb of syncListeners) cb(evt);
     }
