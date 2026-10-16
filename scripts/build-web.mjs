@@ -67,7 +67,9 @@ const replace = (from, to) => {
   html = html.replace(from, to);
 };
 replace(/content="default-src[^"]*"/.exec(html)[0], `content="${csp}"`);
-replace('content="width=device-width, initial-scale=1"', 'content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content"');
+// No zooming on phones: like a native app, a double tap or pinch shouldn't
+// zoom the whole app (iPhone does both unless told not to).
+replace('content="width=device-width, initial-scale=1"', 'content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content"');
 replace('../node_modules/marked/lib/marked.umd.js', 'vendor/marked.umd.js');
 replace('../node_modules/dompurify/dist/purify.min.js', 'vendor/purify.min.js');
 replace('<script src="app.js"></script>', '<script src="bridge.js"></script>\n  <script src="app.js"></script>');

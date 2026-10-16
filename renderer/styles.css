@@ -64,6 +64,7 @@ html, body {
   margin: 0;
   height: 100%;
   overflow: hidden; /* only the message list scrolls, never the page */
+  touch-action: manipulation; /* a double tap doesn't zoom (phones) */
   background: var(--bg);
   color: var(--text);
   font: 14px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
