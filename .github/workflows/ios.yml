@@ -16,8 +16,6 @@ jobs:
       # Set up with an Apple Developer account (see docs/DEVELOPMENT.md);
       # without it the app is still built, unsigned.
       ASC_KEY_BASE64: ${{ secrets.ASC_KEY_BASE64 }}
-      # The Google OAuth client for iPhone (Drive sync); see docs/google-drive-setup.md.
-      GOOGLE_IOS_CLIENT_ID: ${{ vars.GOOGLE_IOS_CLIENT_ID }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -35,7 +33,7 @@ jobs:
         run: |
           xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release \
             -destination 'generic/platform=iOS' -derivedDataPath build-ios \
-            MARKETING_VERSION=1.0.${{ github.run_number }} CURRENT_PROJECT_VERSION=${{ github.run_number }} GOOGLE_IOS_CLIENT_ID="$GOOGLE_IOS_CLIENT_ID" \
+            MARKETING_VERSION=1.0.${{ github.run_number }} CURRENT_PROJECT_VERSION=${{ github.run_number }} \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
             -quiet build
       # The native engine (llama.cpp on the Apple GPU) must be inside the app.
@@ -86,7 +84,7 @@ jobs:
           xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release \
             -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/NajwaAI.xcarchive" \
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Automatic \
-            MARKETING_VERSION=1.0.${{ github.run_number }} CURRENT_PROJECT_VERSION=${{ github.run_number }} GOOGLE_IOS_CLIENT_ID="$GOOGLE_IOS_CLIENT_ID" \
+            MARKETING_VERSION=1.0.${{ github.run_number }} CURRENT_PROJECT_VERSION=${{ github.run_number }} \
             "${AUTH[@]}" -quiet archive
           cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
           <?xml version="1.0" encoding="UTF-8"?>

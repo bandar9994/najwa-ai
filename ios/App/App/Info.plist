@@ -54,11 +54,11 @@
 	<!-- The models on the user's own computer (Najwa AI desktop, Ollama, LM
 	     Studio, Hermes Agent) are reached over plain http on the local network
 	     or Tailscale; everything else is https. -->
-	<!-- Google sign-in for Drive sync (GoogleAuthPlugin.swift): the iOS OAuth
-	     client ID, from the build setting GOOGLE_IOS_CLIENT_ID (the repository
-	     variable of the same name in CI). Empty: Drive sync isn't offered. -->
+	<!-- Google sign-in for Drive sync (GoogleAuthPlugin.swift): the "iOS"
+	     OAuth client ID from Google Cloud. Not a secret (iOS clients have none).
+	     Empty: Drive sync isn't offered on iPhone. -->
 	<key>GoogleIOSClientID</key>
-	<string>$(GOOGLE_IOS_CLIENT_ID)</string>
+	<string>332102354961-hc9eoj7gcndcvn3vtnhvt3c6lh7ts84m.apps.googleusercontent.com</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>

@@ -55,9 +55,9 @@ If the fingerprint is missing or wrong, the phone shows *"Google sign-in is not 
 1. **Clients → Create client**. Application type **iOS**, name **Najwa AI iPhone**:
    - Bundle ID: `com.bandar9994.balimda`
 2. Click **Create** and copy the **Client ID** (it ends in `.apps.googleusercontent.com`). It isn't a secret: iPhone apps can't keep secrets, so Google's iOS clients don't have one.
-3. In the repository, open **Settings → Secrets and variables → Actions → Variables** and add a variable `GOOGLE_IOS_CLIENT_ID` with that Client ID.
+3. Put it in `ios/App/App/Info.plist`, as the value of `GoogleIOSClientID`.
 
-The next **iOS app** build on `main` includes it. Until then, the iPhone app only offers GitHub sync.
+The next **iOS app** build on `main` includes it. Without it, the iPhone app only offers GitHub sync.
 
 ## 6. Try it
 
