@@ -18,7 +18,7 @@ npm run icons         # redraw the app icon, Android launcher icons and splash s
 - `main.js`: Electron main process. It owns the window, the menu, and model API calls.
 - `preload.js`: the small, safe bridge between the UI and the main process.
 - `src/storage.js`: JSON chat storage, shared by desktop and mobile.
-- `src/sync.js`: encrypted sync through Google Drive or a private GitHub repository, shared by desktop and mobile. `src/google-auth-desktop.js` is Google sign-in for the desktop app, and `android/.../GoogleAuthPlugin.java` is Google sign-in on Android.
+- `src/sync.js`: encrypted sync through Google Drive or a private GitHub repository, shared by desktop and mobile. `src/google-auth-desktop.js` is Google sign-in for the desktop app, `android/.../GoogleAuthPlugin.java` is Google sign-in on Android, and `native/llama/ios/Sources/LlamaPlugin/GoogleAuthPlugin.swift` on iPhone.
 - `src/remote.js` + `src/remote-server.js`: "use my computer's models" from the phone. An encrypted link between the desktop app and the phone, with a key derived from the sync key.
 - `src/providers.js`: Ollama, OpenAI-compatible, Anthropic and OpenAI streaming. It runs in both Node and the phone's web view.
 - `renderer/`: the UI, in plain HTML/CSS/JS with no build step. Desktop and mobile share it.
