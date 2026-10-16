@@ -281,7 +281,25 @@ details.thinking summary { cursor: pointer; }
 
 /* ---------- composer ---------- */
 
-#composer { padding: 8px 16px 14px; }
+#composer { padding: 8px 16px 14px; position: relative; }
+.jump-btn {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+  color: var(--text);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  z-index: 5;
+}
+.jump-btn[hidden] { display: none; }
 .composer-box {
   max-width: 820px;
   margin: 0 auto;
