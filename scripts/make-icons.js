@@ -5,57 +5,33 @@
 // Draws the Najwa AI icon and writes the desktop icon, the website logos, and
 // the Android and iOS launcher icons and splash screens.
 //
-// The icon is the Arabic letter noon (ن), the first letter of Najwa (نجوى, "a
-// private conversation"): a white bowl, like cupped hands holding a secret,
-// under a gold dot, a star in a night sky.
-// Pure Node, no image libraries needed.
+// The mark: a white N, you, over a rose chat bubble, Najwa answering, with a
+// sparkle for AI, on deep navy. build/icon.svg is the same artwork as a
+// vector, for print and the web.
 //
-//   node scripts/make-icons.js
+//   node scripts/make-icons.js      (needs the dev dependency @resvg/resvg-js)
 
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
+const { Resvg } = require('@resvg/resvg-js');
 
 const root = path.resolve(__dirname, '..');
-const NIGHT_TOP = [27, 24, 72];
-const NIGHT_BOTTOM = [88, 64, 200];
-const WHITE = [248, 246, 255];
-const GOLD = [255, 198, 88];
+const NAVY_TOP = '#2d4372';
+const NAVY_BOTTOM = '#1c2b4d';
+const NAVY_FLAT = '#25395f';   // Android's adaptive icon background (one colour)
 
-// ---- shapes in a 512×512 design space ----------------------------------------
+// The mark in a 512×512 design space.
+const mark = ({ n = '#ffffff', bubble = '#e3968d', spark = '#ffffff' } = {}) => `
+  <g transform="translate(-6 -10)">
+    <path fill="${bubble}" d="M226 130H346A62 62 0 0 1 408 192V290A62 62 0 0 1 346 352H344L374 402L302 352H226A62 62 0 0 1 164 290V192A62 62 0 0 1 226 130Z"/>
+    <path fill="none" stroke="${n}" stroke-width="42" stroke-linecap="round" stroke-linejoin="round" d="M150 362V160L318 362V160"/>
+    <path fill="${spark}" d="M366 150q5 22 27 27q-22 5-27 27q-5-22-27-27q22-5 27-27z"/>
+  </g>`;
+const MARK_DARK = mark();
 
-function inRounded(x, y, x0, y0, x1, y1, r) {
-  if (x < x0 || x > x1 || y < y0 || y > y1) return false;
-  const cx = Math.min(Math.max(x, x0 + r), x1 - r);
-  const cy = Math.min(Math.max(y, y0 + r), y1 - r);
-  return (x - cx) ** 2 + (y - cy) ** 2 <= r * r;
-}
-
-// The bowl of the noon, drawn like a reed pen stroke: between two circles,
-// the inner one higher, so it is thick at the bottom and thin at the tips,
-// which rise a little above the middle and end round.
-const OUTER = { x: 256, y: 241, r: 150 };
-const INNER = { x: 256, y: 216, r: 126 };
-const TIP_Y = 216;
-const halfWidth = (c, y) => Math.sqrt(Math.max(0, c.r ** 2 - (y - c.y) ** 2));
-const TIP = {
-  x: (halfWidth(OUTER, TIP_Y) + halfWidth(INNER, TIP_Y)) / 2,
-  r: (halfWidth(OUTER, TIP_Y) - halfWidth(INNER, TIP_Y)) / 2
-};
-function inBowl(x, y) {
-  const inOuter = (x - OUTER.x) ** 2 + (y - OUTER.y) ** 2 <= OUTER.r ** 2;
-  const inInner = (x - INNER.x) ** 2 + (y - INNER.y) ** 2 <= INNER.r ** 2;
-  if (y >= TIP_Y && inOuter && !inInner) return true;
-  return (Math.abs(x - 256) - TIP.x) ** 2 + (y - TIP_Y) ** 2 <= TIP.r ** 2;
-}
-
-// The dot: a diamond, as the noon's dot is written in calligraphy, and a gold
-// star, with a soft glow around it.
-const DOT = { x: 256, y: 156, w: 34, h: 46 };
-const inDot = (x, y) => Math.abs(x - DOT.x) / DOT.w + Math.abs(y - DOT.y) / DOT.h <= 1;
-const glow = (x, y) => 0.55 * Math.max(0, 1 - Math.hypot(x - DOT.x, y - DOT.y) / 115) ** 2;
-
-const mix = (a, b, t) => a.map((c, i) => c + (b[i] - c) * t);
+const gradient = `<linearGradient id="navy" x1="0" y1="0" x2="0" y2="1">
+  <stop offset="0" stop-color="${NAVY_TOP}"/><stop offset="1" stop-color="${NAVY_BOTTOM}"/></linearGradient>`;
 
 /**
  * Render an image.
@@ -63,47 +39,23 @@ const mix = (a, b, t) => a.map((c, i) => c + (b[i] - c) * t);
  * @param {object} o
  *   o.iconSize   pixel size of the 512-unit design space (centred)
  *   o.background 'rounded' | 'circle' | 'fill' | 'none'
+ *   o.opaque     no alpha channel (the App Store rejects icons that have one)
  */
 function render(w, h, o) {
-  const px = Buffer.alloc(w * h * 4);
-  const SS = 3;
-  const scale = 512 / o.iconSize;
-  const ox = (w - o.iconSize) / 2;
-  const oy = (h - o.iconSize) / 2;
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      let bg = 0;
-      let bowl = 0;
-      let dot = 0;
-      for (let sy = 0; sy < SS; sy++) {
-        for (let sx = 0; sx < SS; sx++) {
-          const u = (x + (sx + 0.5) / SS - ox) * scale;
-          const v = (y + (sy + 0.5) / SS - oy) * scale;
-          if (o.background === 'fill') bg++;
-          else if (o.background === 'rounded' && inRounded(u, v, 16, 16, 496, 496, 110)) bg++;
-          else if (o.background === 'circle' && (u - 256) ** 2 + (v - 256) ** 2 <= 250 ** 2) bg++;
-          if (inBowl(u, v)) bowl++;
-          if (inDot(u, v)) dot++;
-        }
-      }
-      const n = SS * SS;
-      const [a, b, d] = [bg / n, bowl / n, dot / n];
-      // Night sky, the star's glow on it, the white bowl, the gold dot.
-      let c = mix(NIGHT_TOP, NIGHT_BOTTOM, y / h);
-      c = mix(c, GOLD, glow((x + 0.5 - ox) * scale, (y + 0.5 - oy) * scale) * a);
-      let alpha = a;
-      c = mix(c, WHITE, b);
-      alpha = alpha + b * (1 - alpha);
-      c = mix(c, GOLD, d);
-      alpha = alpha + d * (1 - alpha);
-      const i = (y * w + x) * 4;
-      px[i] = c[0];
-      px[i + 1] = c[1];
-      px[i + 2] = c[2];
-      px[i + 3] = Math.round(alpha * 255);
-    }
-  }
-  return encodePng(w, h, px, { opaque: o.opaque });
+  const k = o.iconSize / 512;
+  const x = (w - o.iconSize) / 2;
+  const y = (h - o.iconSize) / 2;
+  const bg = {
+    fill: `<rect width="${w}" height="${h}" fill="url(#navy)"/>`,
+    rounded: `<rect x="${x + 16 * k}" y="${y + 16 * k}" width="${480 * k}" height="${480 * k}" rx="${110 * k}" fill="url(#navy)"/>`,
+    circle: `<circle cx="${w / 2}" cy="${h / 2}" r="${250 * k}" fill="url(#navy)"/>`,
+    none: ''
+  }[o.background];
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+  <defs>${gradient}</defs>${bg}
+  <svg x="${x}" y="${y}" width="${o.iconSize}" height="${o.iconSize}" viewBox="0 0 512 512">${MARK_DARK}</svg></svg>`;
+  const img = new Resvg(svg).render();
+  return o.opaque ? encodePng(w, h, img.pixels, { opaque: true }) : img.asPng();
 }
 
 // ---- minimal PNG encoder / size reader --------------------------------------
@@ -174,6 +126,11 @@ function write(file, data) {
 // ---- outputs ---------------------------------------------------------------
 
 write(path.join(root, 'build/icon.png'), render(512, 512, { iconSize: 512, background: 'rounded' }));
+write(path.join(root, 'build/icon.svg'), `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>${gradient}</defs>
+  <rect x="16" y="16" width="480" height="480" rx="110" fill="url(#navy)"/>${MARK_DARK}
+</svg>
+`);
 
 // Website: the logo for Google's sign-in screen (square, 120×120, full
 // background so it looks right when Google rounds it) and the page icon.
@@ -189,9 +146,9 @@ if (fs.existsSync(res)) {
     write(`${res}/mipmap-${d}/ic_launcher_round.png`, render(legacy, legacy, { iconSize: legacy, background: 'circle' }));
     // Adaptive icon foreground: 108dp canvas, artwork inside the 66dp safe zone.
     const fg = Math.round(108 * k);
-    write(`${res}/mipmap-${d}/ic_launcher_foreground.png`, render(fg, fg, { iconSize: Math.round(80 * k), background: 'none' }));
+    write(`${res}/mipmap-${d}/ic_launcher_foreground.png`, render(fg, fg, { iconSize: Math.round(94 * k), background: 'none' }));
   }
-  // Splash screens: the night sky with the icon in the middle.
+  // Splash screens: navy with the mark in the middle.
   for (const dir of fs.readdirSync(res)) {
     const file = path.join(res, dir, 'splash.png');
     if (!fs.existsSync(file)) continue;
@@ -199,7 +156,7 @@ if (fs.existsSync(res)) {
     write(file, render(w, h, { iconSize: Math.round(Math.min(w, h) * 0.45), background: 'fill' }));
   }
   write(`${res}/values/ic_launcher_background.xml`,
-    '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="ic_launcher_background">#392C88</color>\n</resources>\n');
+    `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="ic_launcher_background">${NAVY_FLAT}</color>\n</resources>\n`);
 }
 
 // iOS: one 1024×1024 app icon (iOS rounds the corners itself, so the
