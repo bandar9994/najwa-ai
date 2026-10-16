@@ -95,6 +95,8 @@
         <strong>Linux</strong><span>AppImage</span></a>
       <a class="platform" data-os="linux" href="https://github.com/bandar9994/najwa-ai/releases/download/desktop-latest/Najwa-AI-Linux.deb">
         <strong>Linux</strong><span>.deb (Ubuntu, Debian)</span></a>
+      <a class="platform" data-os="ios" href="https://github.com/bandar9994/najwa-ai/releases/download/ios-latest/Najwa-AI-iOS-unsigned.ipa">
+        <strong>iPhone</strong><span>.ipa, sign it first</span></a>
     </div>
     <details class="tips">
       <summary>Installing for the first time?</summary>
@@ -102,10 +104,11 @@
         <li><strong>Android:</strong> open the APK and allow installing apps from your browser when asked.</li>
         <li><strong>Windows:</strong> if SmartScreen appears, choose <em>More info → Run anyway</em>.</li>
         <li><strong>Mac:</strong> drag Najwa AI to Applications. The first time, right-click it and choose <em>Open</em>.</li>
+        <li><strong>iPhone:</strong> Najwa AI isn't on the App Store yet. Sign the .ipa for your iPhone first: upload it to a signing service such as Signulous, or install it with Sideloadly or AltStore and your Apple ID.</li>
         <li>Then pick a model: download one on your phone in <em>Settings → Models &amp; providers</em>, or install <a href="https://ollama.com">Ollama</a> on your computer. The <a href="https://github.com/bandar9994/najwa-ai/blob/main/docs/GUIDE.md">user guide</a> has everything else.</li>
       </ul>
     </details>
-    <p class="sub">iOS is on the way. Source and all downloads are on <a href="https://github.com/bandar9994/najwa-ai">GitHub</a>.</p>
+    <p class="sub">Source and all downloads are on <a href="https://github.com/bandar9994/najwa-ai">GitHub</a>.</p>
   </section>
 
   <section class="wrap business" id="business">
@@ -138,12 +141,12 @@
     // Put the visitor's own system first and point the main button at it.
     (function () {
       var ua = navigator.userAgent;
-      var os = /Android/i.test(ua) ? 'android' : /Windows/i.test(ua) ? 'windows' : /Mac OS X|Macintosh/i.test(ua) && !/iPhone|iPad/i.test(ua) ? 'mac' : /Linux/i.test(ua) ? 'linux' : null;
+      var os = /Android/i.test(ua) ? 'android' : /iPhone|iPad/i.test(ua) ? 'ios' : /Windows/i.test(ua) ? 'windows' : /Mac OS X|Macintosh/i.test(ua) && !/iPhone|iPad/i.test(ua) ? 'mac' : /Linux/i.test(ua) ? 'linux' : null;
       if (!os) return;
       var list = document.querySelector('.platforms');
       var mine = list.querySelectorAll('[data-os="' + os + '"]');
       for (var i = mine.length - 1; i >= 0; i--) { mine[i].classList.add('yours'); list.insertBefore(mine[i], list.firstChild); }
-      var names = { android: 'Android', windows: 'Windows', mac: 'Mac', linux: 'Linux' };
+      var names = { android: 'Android', ios: 'iPhone', windows: 'Windows', mac: 'Mac', linux: 'Linux' };
       var hero = document.getElementById('heroDownload');
       hero.textContent = 'Download for ' + names[os];
       if (os === 'android' || os === 'windows') hero.href = mine[0].href;

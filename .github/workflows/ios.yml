@@ -10,6 +10,8 @@ on:
 jobs:
   ios:
     runs-on: macos-15
+    permissions:
+      contents: write  # to publish the .ipa to the "ios-latest" release
     env:
       # Set up with an Apple Developer account (see docs/DEVELOPMENT.md);
       # without it the app is still built, unsigned.
@@ -52,6 +54,20 @@ jobs:
           name: Najwa-AI-iOS-unsigned
           path: Najwa-AI-iOS-unsigned.ipa
           if-no-files-found: error
+      # One fixed link that always has the newest .ipa, like Android's:
+      # https://github.com/<owner>/<repo>/releases/download/ios-latest/Najwa-AI-iOS-unsigned.ipa
+      # Only from main: work on other branches isn't released until it's merged.
+      - name: Publish to the ios-latest release
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes="Newest iPhone build (from ${GITHUB_SHA::7}, $(date -u '+%Y-%m-%d %H:%M UTC')), unsigned. To install it, sign it for your iPhone: upload Najwa-AI-iOS-unsigned.ipa to a signing service (such as Signulous), or use Sideloadly or AltStore with your Apple ID."
+          if ! gh release view ios-latest >/dev/null 2>&1; then
+            gh release create ios-latest --prerelease --target "$GITHUB_SHA" --title "Najwa AI for iPhone (latest build)" --notes "$notes"
+          fi
+          gh release upload ios-latest Najwa-AI-iOS-unsigned.ipa --clobber
+          gh release edit ios-latest --title "Najwa AI for iPhone (latest build)" --notes "$notes"
       # Merged changes go to TestFlight: signed in the cloud with the App Store
       # Connect API key (Xcode creates the certificate and profile itself), then
       # uploaded. Testers get the new build in the TestFlight app.
