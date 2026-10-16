@@ -1,6 +1,6 @@
-// Balimda — © 2026 Bandar Altariqi. All rights reserved.
-// Licensed under the Balimda License (see LICENSE): non-commercial use only;
-// keep the Balimda name and the "Balimda by Bandar Altariqi" credit; no rebranding.
+// Najwa AI — © 2026 Bandar Altariqi. All rights reserved.
+// Licensed under the Najwa AI License (see LICENSE): non-commercial use only;
+// keep the Najwa AI name and the "Najwa AI by Bandar Altariqi" credit; no rebranding.
 
 import Foundation
 import Capacitor
@@ -88,8 +88,8 @@ public class LlamaPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     // ---- record of downloads ------------------------------------------------------
-    // Which models Balimda downloaded. A model only leaves the record when it is
-    // deleted in Balimda, so a recorded model whose file is gone was removed by
+    // Which models Najwa AI downloaded. A model only leaves the record when it is
+    // deleted in Najwa AI, so a recorded model whose file is gone was removed by
     // something else, and the app can say so and offer it again.
 
     private func recordFile() -> URL {
@@ -169,7 +169,7 @@ public class LlamaPlugin: CAPPlugin, CAPBridgedPlugin {
             let vision = fm.fileExists(atPath: modelFile(LlamaPlugin.visionName(for: name)).path)
             models.append(["name": name, "size": fileSize(f), "vision": vision])
         }
-        // On the record but gone from the phone, without being deleted in Balimda.
+        // On the record but gone from the phone, without being deleted in Najwa AI.
         var missing: [[String: Any]] = []
         for (name, entry) in record where !present.contains(name) {
             var m: [String: Any] = ["name": name, "size": entry["size"] ?? 0, "at": entry["at"] ?? 0]
@@ -353,7 +353,7 @@ public class LlamaPlugin: CAPPlugin, CAPBridgedPlugin {
                 let file = self.modelFile(model)
                 if !FileManager.default.fileExists(atPath: file.path) {
                     if self.wasDownloaded(file.lastPathComponent) {
-                        throw PluginError("\"\(model)\" was removed from this phone, but not by Balimda (it only deletes a model when you tap Delete). Download it again in Settings → Models & providers.")
+                        throw PluginError("\"\(model)\" was removed from this phone, but not by Najwa AI (it only deletes a model when you tap Delete). Download it again in Settings → Models & providers.")
                     }
                     throw PluginError("\"\(model)\" isn't downloaded. Download it in Settings → Models & providers.")
                 }

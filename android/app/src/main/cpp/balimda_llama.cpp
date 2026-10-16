@@ -1,8 +1,8 @@
-// Balimda — © 2026 Bandar Altariqi. All rights reserved.
-// Licensed under the Balimda License (see LICENSE): non-commercial use only;
-// keep the Balimda name and the "Balimda by Bandar Altariqi" credit; no rebranding.
+// Najwa AI — © 2026 Bandar Altariqi. All rights reserved.
+// Licensed under the Najwa AI License (see LICENSE): non-commercial use only;
+// keep the Najwa AI name and the "Najwa AI by Bandar Altariqi" credit; no rebranding.
 
-// JNI bridge between Balimda (com.bandar9994.balimda.LlamaEngine) and the
+// JNI bridge between Najwa AI (com.bandar9994.balimda.LlamaEngine) and the
 // on-device engine shared with the iOS app (native/llama/engine).
 
 #include <jni.h>

@@ -1,6 +1,6 @@
-// Balimda — © 2026 Bandar Altariqi. All rights reserved.
-// Licensed under the Balimda License (see LICENSE): non-commercial use only;
-// keep the Balimda name and the "Balimda by Bandar Altariqi" credit; no rebranding.
+// Najwa AI — © 2026 Bandar Altariqi. All rights reserved.
+// Licensed under the Najwa AI License (see LICENSE): non-commercial use only;
+// keep the Najwa AI name and the "Najwa AI by Bandar Altariqi" credit; no rebranding.
 
 // Native on-device engine (Android): llama.cpp compiled for the phone, running
 // on the CPU or, on Snapdragon phones, the Adreno GPU via OpenCL. Talks to
@@ -176,8 +176,8 @@ export async function listDownloaded() {
   return models.map((m) => ({ name: m.name, size: m.size, url: byName.get(m.name) || `local:${m.name}`, vision: !!m.vision }));
 }
 
-// Models Balimda downloaded that are gone from the phone although they were
-// never deleted in Balimda (something else on the phone removed them).
+// Models Najwa AI downloaded that are gone from the phone although they were
+// never deleted in Najwa AI (something else on the phone removed them).
 export async function listMissing() {
   const { missing = [] } = await Llama.listModels();
   const byName = urlsByName();

@@ -1,6 +1,6 @@
 // swift-tools-version: 5.9
-// Balimda — © 2026 Bandar Altariqi. All rights reserved.
-// Licensed under the Balimda License (see LICENSE).
+// Najwa AI — © 2026 Bandar Altariqi. All rights reserved.
+// Licensed under the Najwa AI License (see LICENSE).
 
 import PackageDescription
 

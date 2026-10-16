@@ -1,12 +1,12 @@
 name: Commercial license request
-description: Using Balimda at a company or organisation, or in a paid product or service? Ask for a quote.
+description: Using Najwa AI at a company or organisation, or in a paid product or service? Ask for a quote.
 title: "Commercial license: <company name>"
 labels: ["commercial-license"]
 body:
   - type: markdown
     attributes:
       value: |
-        Balimda is free for personal use. Use by or for a company or other organisation, or in anything that earns money, needs a commercial license from Bandar Altariqi (see [LICENSE](https://github.com/bandar9994/balimda/blob/main/LICENSE), section 4).
+        Najwa AI is free for personal use. Use by or for a company or other organisation, or in anything that earns money, needs a commercial license from Bandar Altariqi (see [LICENSE](https://github.com/bandar9994/najwa-ai/blob/main/LICENSE), section 4).
 
         Tell us a little about what you need and you'll get a quote.
 
@@ -28,7 +28,7 @@ body:
   - type: dropdown
     id: use
     attributes:
-      label: How will you use Balimda?
+      label: How will you use Najwa AI?
       options:
         - Internal use by our staff
         - In a product or service we sell

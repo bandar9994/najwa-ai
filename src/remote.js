@@ -1,8 +1,8 @@
-// Balimda — © 2026 Bandar Altariqi. All rights reserved.
-// Licensed under the Balimda License (see LICENSE): non-commercial use only;
-// keep the Balimda name and the "Balimda by Bandar Altariqi" credit; no rebranding.
+// Najwa AI — © 2026 Bandar Altariqi. All rights reserved.
+// Licensed under the Najwa AI License (see LICENSE): non-commercial use only;
+// keep the Najwa AI name and the "Najwa AI by Bandar Altariqi" credit; no rebranding.
 
-// "Use my computer's models" from the phone. The Balimda desktop app can
+// "Use my computer's models" from the phone. The Najwa AI desktop app can
 // answer chat requests from the user's phone over the local network (see
 // remote-server.js); this file has the protocol both sides share and the
 // phone's side of it.
@@ -111,7 +111,7 @@ function remoteComputers({ getKey, getComputers, fetch = globalThis.fetch, probe
 
   async function key() {
     const syncKey = await getKey();
-    if (!syncKey) throw new RemoteError('Set up sync on this phone first. It\'s how Balimda finds your computer and keeps the connection private.');
+    if (!syncKey) throw new RemoteError('Set up sync on this phone first. It\'s how Najwa AI finds your computer and keeps the connection private.');
     if (!keyCache || keyCache.syncKey !== syncKey) keyCache = { syncKey, key: await linkKey(syncKey) };
     return keyCache.key;
   }
@@ -119,7 +119,7 @@ function remoteComputers({ getKey, getComputers, fetch = globalThis.fetch, probe
   async function computers() {
     const list = Object.values((await getComputers()) || {}).filter((c) => c && c.enabled && Array.isArray(c.addrs) && c.addrs.length);
     if (!list.length) {
-      throw new RemoteError('No computer is sharing its models yet. In Balimda on your computer, open Settings → Models & providers and turn on "Let my phone use this computer\'s models".');
+      throw new RemoteError('No computer is sharing its models yet. In Najwa AI on your computer, open Settings → Models & providers and turn on "Let my phone use this computer\'s models".');
     }
     return list;
   }
@@ -213,7 +213,7 @@ function remoteComputers({ getKey, getComputers, fetch = globalThis.fetch, probe
     } catch {
       found.delete(computer.id);
       if (forbidden) throw new RemoteError(`${computer.name} didn't accept this phone. Make sure both use the same sync account and passphrase.`);
-      throw new RemoteError(`Couldn't reach ${computer.name}. Check that it's on with Balimda open, and that your phone is on the same Wi-Fi (or both are on Tailscale).`);
+      throw new RemoteError(`Couldn't reach ${computer.name}. Check that it's on with Najwa AI open, and that your phone is on the same Wi-Fi (or both are on Tailscale).`);
     }
   }
 
@@ -243,7 +243,7 @@ function remoteComputers({ getKey, getComputers, fetch = globalThis.fetch, probe
   async function streamChat(_cfg, req, onDelta, signal, onInfo = () => {}) {
     if (!models.has(req.model)) await listModels().catch(() => {});
     const target = models.get(req.model);
-    if (!target) throw new RemoteError(`${req.model} isn't available right now. Check that the computer is on with Balimda open.`);
+    if (!target) throw new RemoteError(`${req.model} isn't available right now. Check that the computer is on with Najwa AI open.`);
     const name = target.computer.name;
     // The reply is a job on the computer: if the connection drops, it carries
     // on there, and the phone picks it up again from the part it got to.
@@ -316,7 +316,7 @@ function remoteComputers({ getKey, getComputers, fetch = globalThis.fetch, probe
           } catch (err) {
             if (signal && signal.aborted) throw err;
             if (err.code === 'gone') {
-              throw new RemoteError(`${name} no longer has this reply (Balimda was restarted there, or the connection was lost for too long). The reply so far is kept: tap Regenerate to try again.`);
+              throw new RemoteError(`${name} no longer has this reply (Najwa AI was restarted there, or the connection was lost for too long). The reply so far is kept: tap Regenerate to try again.`);
             }
             if (err.fromComputer) throw err;
             last = err;
@@ -328,7 +328,7 @@ function remoteComputers({ getKey, getComputers, fetch = globalThis.fetch, probe
       } finally {
         onInfo({ kind: 'status', text: '' });
       }
-      throw new RemoteError(`Couldn't reconnect to ${name} to finish the reply (${last.message}). Check that it's on with Balimda open and on the same Wi-Fi. The reply so far is kept: tap Regenerate to try again.`);
+      throw new RemoteError(`Couldn't reconnect to ${name} to finish the reply (${last.message}). Check that it's on with Najwa AI open and on the same Wi-Fi. The reply so far is kept: tap Regenerate to try again.`);
     }
   }
 

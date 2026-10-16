@@ -1,6 +1,6 @@
-// Balimda — © 2026 Bandar Altariqi. All rights reserved.
-// Licensed under the Balimda License (see LICENSE): non-commercial use only;
-// keep the Balimda name and the "Balimda by Bandar Altariqi" credit; no rebranding.
+// Najwa AI — © 2026 Bandar Altariqi. All rights reserved.
+// Licensed under the Najwa AI License (see LICENSE): non-commercial use only;
+// keep the Najwa AI name and the "Najwa AI by Bandar Altariqi" credit; no rebranding.
 
 package com.bandar9994.balimda;
 
@@ -84,8 +84,8 @@ public class LlamaPlugin extends Plugin {
     }
 
     // ---- record of downloads -------------------------------------------------------
-    // Which models Balimda downloaded (files/models-record.json). A model is
-    // only taken off the record when the user deletes it in Balimda, so a
+    // Which models Najwa AI downloaded (files/models-record.json). A model is
+    // only taken off the record when the user deletes it in Najwa AI, so a
     // recorded model whose file is gone was removed by something else on the
     // phone (e.g. a storage cleaner), and the app can say so and offer it again.
 
@@ -200,7 +200,7 @@ public class LlamaPlugin extends Plugin {
                 list.put(m);
             }
         }
-        // On the record but gone from the phone, without being deleted in Balimda.
+        // On the record but gone from the phone, without being deleted in Najwa AI.
         JSArray missing = new JSArray();
         java.util.Iterator<String> names = record.keys();
         while (names.hasNext()) {
@@ -474,7 +474,7 @@ public class LlamaPlugin extends Plugin {
                 File file = modelFile(model);
                 if (!file.exists()) {
                     if (wasDownloaded(file.getName())) {
-                        throw new Exception("\"" + model + "\" was removed from this phone, but not by Balimda (it only deletes a model when you tap Delete). "
+                        throw new Exception("\"" + model + "\" was removed from this phone, but not by Najwa AI (it only deletes a model when you tap Delete). "
                             + "Something else on the phone removed it, often a storage cleaner. Download it again in Settings → Models & providers.");
                     }
                     throw new Exception("\"" + model + "\" isn't downloaded. Download it in Settings → Models & providers.");

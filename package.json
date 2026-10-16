@@ -2,7 +2,7 @@
   "name": "balimda",
   "productName": "Balimda",
   "version": "1.0.0",
-  "description": "Balimda: a private AI chat app for desktop and mobile that remembers every chat. Runs models on your device (with GPU acceleration on Snapdragon phones), on your own computer (Ollama, LM Studio) or in the cloud (Claude, OpenAI).",
+  "description": "Najwa AI: a private AI chat app for desktop and mobile that remembers every chat. Runs models on your device (with GPU acceleration on Snapdragon phones), on your own computer (Ollama, LM Studio) or in the cloud (Claude, OpenAI).",
   "main": "main.js",
   "author": {
     "name": "Bandar Altariqi",
@@ -36,6 +36,7 @@
     "@capacitor/filesystem": "^8.1.3",
     "@capacitor/ios": "^8.5.2",
     "@capacitor/share": "^8.0.2",
+    "@resvg/resvg-js": "^2.6.2",
     "@wllama/wllama": "^3.6.1",
     "balimda-llama": "file:native/llama",
     "electron": "^44.4.5",
@@ -44,7 +45,7 @@
   },
   "build": {
     "appId": "com.bandar9994.balimda",
-    "productName": "Balimda",
+    "productName": "Najwa AI",
     "files": [
       "main.js",
       "preload.js",
@@ -88,7 +89,7 @@
       ],
       "category": "public.app-category.productivity",
       "extendInfo": {
-        "NSMicrophoneUsageDescription": "Balimda listens when you click the microphone, so you can talk to your AI instead of typing. What you say is turned into text on this Mac."
+        "NSMicrophoneUsageDescription": "Najwa AI listens when you click the microphone, so you can talk to your AI instead of typing. What you say is turned into text on this Mac."
       },
       "identity": "-",
       "hardenedRuntime": false
@@ -100,9 +101,9 @@
       ],
       "category": "Utility",
       "maintainer": "Bandar Altariqi <bandar9994@users.noreply.github.com>",
-      "synopsis": "Balimda by Bandar Altariqi: private AI chat that remembers every chat"
+      "synopsis": "Najwa AI by Bandar Altariqi: private AI chat that remembers every chat"
     },
     "copyright": "Copyright © 2026 Bandar Altariqi"
   },
-  "homepage": "https://github.com/bandar9994/balimda"
+  "homepage": "https://github.com/bandar9994/najwa-ai"
 }

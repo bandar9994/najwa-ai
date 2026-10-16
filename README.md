@@ -1,8 +1,10 @@
 <div align="center">
 
-<img src="build/icon.png" width="104" alt="Balimda icon">
+<img src="build/icon.png" width="104" alt="Najwa AI icon">
 
-# Balimda
+# Najwa AI
+
+<sub>نجوى · a private conversation · formerly Balimda</sub>
 
 ### Your private AI, on every device you own.
 
@@ -26,11 +28,11 @@ Your chats, memory and assistants stay in sync, encrypted end to end.
 [![Business license available](https://img.shields.io/badge/business%20license-available-2b2a6e)](#for-businesses)
 [![Support on Ko-fi](https://img.shields.io/badge/support-Ko--fi-ff5e5b?logo=kofi&logoColor=white)](https://ko-fi.com/bandaraltariqi)
 
-**[Download](#download)** · **[Features](#features)** · **[User guide](docs/GUIDE.md)** · **[For businesses](#for-businesses)** · **[Support Balimda](#support-balimda)** · **[Website](https://bandar9994.github.io/)** · **[Privacy](PRIVACY.md)**
+**[Download](#download)** · **[Features](#features)** · **[User guide](docs/GUIDE.md)** · **[For businesses](#for-businesses)** · **[Support Najwa AI](#support-balimda)** · **[Website](https://bandar9994.github.io/)** · **[Privacy](PRIVACY.md)**
 
 <br>
 
-<img src="docs/images/hero.png" alt="Balimda on a computer and a phone" width="100%">
+<img src="docs/images/hero.png" alt="Najwa AI on a computer and a phone" width="100%">
 
 </div>
 
@@ -38,7 +40,7 @@ Your chats, memory and assistants stay in sync, encrypted end to end.
 
 ## One chat. Every device. Any model.
 
-Balimda keeps **the same conversation** on your phone and your computers, even when each device uses a different AI model. Nothing to copy, export or switch: open the chat on any device and keep going.
+Najwa AI keeps **the same conversation** on your phone and your computers, even when each device uses a different AI model. Nothing to copy, export or switch: open the chat on any device and keep going.
 
 <div align="center">
 <img src="docs/images/sync.png" alt="The same chat on a PC, using Qwen 3.5 27B, and on a phone, using Qwen 3 4B offline" width="100%">
@@ -47,7 +49,7 @@ Balimda keeps **the same conversation** on your phone and your computers, even w
 | | Where you are | What happens |
 |---|---|---|
 | 💻 | **At your desk** | You start a chat with a large model on your PC, like Qwen 3.5 27B in Ollama. |
-| 📱 | **On the go** | You open Balimda on your phone. The whole chat is already there, and the phone carries on with its own offline model, or with your PC's model over Wi-Fi or Tailscale. |
+| 📱 | **On the go** | You open Najwa AI on your phone. The whole chat is already there, and the phone carries on with its own offline model, or with your PC's model over Wi-Fi or Tailscale. |
 | 💻 | **Back home** | The PC shows everything you said on the phone and answers with the big model again. |
 
 - **Every reply shows which model wrote it**, so you always know what answered.
@@ -61,7 +63,7 @@ Balimda keeps **the same conversation** on your phone and your computers, even w
 Your phone can use **every model on your computer**: the big 27B model in Ollama or LM Studio, and even Claude or OpenAI on your computer's API keys. Turn on one switch on the computer, then pick a model under **On your computer** on the phone. That's it.
 
 <div align="center">
-<img src="docs/images/phones.png" alt="Balimda on Android, chatting with qwen3.5:27b running on the computer" width="100%">
+<img src="docs/images/phones.png" alt="Najwa AI on Android, chatting with qwen3.5:27b running on the computer" width="100%">
 <br><sub>A phone chatting with the computer's Qwen 3.5 27B, at 30 tokens a second · every chat, synced · code with syntax and copy</sub>
 </div>
 
@@ -81,32 +83,32 @@ Setup takes a minute: see [Using the models on your PC from your phone](docs/GUI
 Use [Hermes Agent](https://github.com/NousResearch/hermes-agent) from your phone and computers, with a proper chat app instead of WhatsApp or Telegram.
 
 <div align="center">
-<img src="docs/images/hermes.png" alt="Hermes Agent asking for permission in Balimda on a computer, and the finished task on a phone" width="100%">
+<img src="docs/images/hermes.png" alt="Hermes Agent asking for permission in Najwa AI on a computer, and the finished task on a phone" width="100%">
 </div>
 
 - **Watch it work.** Every tool Hermes runs shows up as it happens, then folds into "Used 4 tools".
 - **You stay in control.** When Hermes wants to do something risky, you see the exact command and choose **Allow once**, **Allow for this chat**, **Always allow** or **Deny**. Nothing is approved automatically.
 - **On your phone too.** Your phone reaches Hermes through your computer, approvals included, so Hermes never has to be opened to the network.
-- **Your chats, kept and synced.** Hermes conversations are saved, searchable and synced like any other chat. Hermes keeps its own memory, so Balimda's isn't sent unless you turn that on.
+- **Your chats, kept and synced.** Hermes conversations are saved, searchable and synced like any other chat. Hermes keeps its own memory, so Najwa AI's isn't sent unless you turn that on.
 
 Setup takes two minutes: see [Using Hermes Agent](docs/GUIDE.md#using-hermes-agent).
 
-## Why Balimda?
+## Why Najwa AI?
 
-Most AI apps send everything you type to someone else's servers, forget you the moment you close them, and live on one device. Balimda does the opposite.
+Most AI apps send everything you type to someone else's servers, forget you the moment you close them, and live on one device. Najwa AI does the opposite.
 
 <table>
 <tr>
 <td width="33%" valign="top">
 
 ### 🔒 Private by design
-Run models on your own phone or computer, with no account and no internet. Balimda has no servers and collects nothing. When you sync, everything is encrypted on your device first. Balimda never loads images or links from a reply by itself, so a reply can't leak your chat to someone's server.
+Run models on your own phone or computer, with no account and no internet. Najwa AI has no servers and collects nothing. When you sync, everything is encrypted on your device first. Najwa AI never loads images or links from a reply by itself, so a reply can't leak your chat to someone's server.
 
 </td>
 <td width="33%" valign="top">
 
 ### 🧠 It remembers you
-Balimda learns lasting facts about you as you chat, keeps them up to date, and looks back through your earlier conversations so you never have to repeat yourself.
+Najwa AI learns lasting facts about you as you chat, keeps them up to date, and looks back through your earlier conversations so you never have to repeat yourself.
 
 </td>
 <td width="33%" valign="top">
@@ -124,19 +126,19 @@ The same chat continues on your phone and your computer, even with a different m
 
 ### Run AI anywhere
 
-- **Offline on your phone.** Download a model once (Qwen, Llama, Gemma and more), then chat with no internet at all. Balimda runs models with native [llama.cpp](https://github.com/ggml-org/llama.cpp) and uses the **Adreno GPU** on Snapdragon phones for faster replies. Any `.gguf` model link works too.
+- **Offline on your phone.** Download a model once (Qwen, Llama, Gemma and more), then chat with no internet at all. Najwa AI runs models with native [llama.cpp](https://github.com/ggml-org/llama.cpp) and uses the **Adreno GPU** on Snapdragon phones for faster replies. Any `.gguf` model link works too.
 - **On your computer.** Use [Ollama](https://ollama.com), [LM Studio](https://lmstudio.ai), llama.cpp, Jan, vLLM or any OpenAI-compatible server. Big models like Qwen 27B run at full speed on your own hardware.
-- **Your Hermes Agent, in a real app.** Connect [Hermes Agent](https://github.com/NousResearch/hermes-agent) and chat with it from your phone and computers instead of WhatsApp or Telegram. You see each tool it runs as it works, and when it wants to do something risky, Balimda shows **Allow once**, **Allow for this chat**, **Always allow** or **Deny**. Hermes keeps its own memory, so Balimda's isn't sent unless you turn that on.
+- **Your Hermes Agent, in a real app.** Connect [Hermes Agent](https://github.com/NousResearch/hermes-agent) and chat with it from your phone and computers instead of WhatsApp or Telegram. You see each tool it runs as it works, and when it wants to do something risky, Najwa AI shows **Allow once**, **Allow for this chat**, **Always allow** or **Deny**. Hermes keeps its own memory, so Najwa AI's isn't sent unless you turn that on.
 - **In the cloud, when you want it.** Anthropic Claude and OpenAI, with your own API key. Keys are stored on your device, encrypted with your system keychain on desktop.
 - **Your phone, your computer's brain.** Turn on one switch on your computer, and your phone can chat with every model the computer has, including cloud models on the computer's API keys. The phone finds the computer through sync, with nothing to type, over an encrypted connection only your devices can use. It works on your home Wi-Fi, or anywhere with [Tailscale](https://tailscale.com). [More about it](#your-computers-brain-in-your-pocket).
 - **The right model on each device.** Every chat remembers which model to use on each device: a small, fast model on the phone and a 27B model on the PC, in the same conversation.
 
 ### Memory that grows with you
 
-- **Remembers automatically.** Mention your name, your job, your family or what you like, and Balimda adds it to memory by itself. A short note tells you what it learned.
+- **Remembers automatically.** Mention your name, your job, your family or what you like, and Najwa AI adds it to memory by itself. A short note tells you what it learned.
 - **Keeps facts current.** Say *"I moved to Jeddah"* and the old city is replaced, not duplicated. Things that no longer apply are forgotten.
 - **Stays short and sharp.** Memory is capped at 1,500 characters and tidies itself up when it grows, so it never crowds out your conversation. You can read and edit every word in Settings.
-- **Recalls earlier chats.** Before replying, Balimda looks through your past conversations, in English and Arabic, for relevant details. Replies that used them say so, with links back to those chats.
+- **Recalls earlier chats.** Before replying, Najwa AI looks through your past conversations, in English and Arabic, for relevant details. Replies that used them say so, with links back to those chats.
 
 ### Never lose a thought
 
@@ -147,7 +149,7 @@ The same chat continues on your phone and your computer, even with a different m
 ### Seamless, encrypted sync
 
 - **Continue any chat on any device**, even when each device uses a different model. See [One chat. Every device. Any model.](#one-chat-every-device-any-model)
-- **Sign in with Google** and your chats, assistants and memory follow you between your phone and computers. Balimda uses a hidden app folder in your Drive and can't see your other files. Developers can use a private GitHub repository instead.
+- **Sign in with Google** and your chats, assistants and memory follow you between your phone and computers. Najwa AI uses a hidden app folder in your Drive and can't see your other files. Developers can use a private GitHub repository instead.
 - **End-to-end encrypted.** Everything is encrypted on your device with AES-256-GCM, using a key made from your own passphrase, before it's uploaded. Google or GitHub only ever see scrambled data.
 - **Nothing gets lost.** If the same chat or your memory changed on two devices before they synced, the changes are merged. Delete a chat once and it's gone everywhere.
 
@@ -181,17 +183,17 @@ The same chat continues on your phone and your computer, even with a different m
 
 | Platform | Download | Notes |
 |---|---|---|
-| **Android** | [Balimda-android.apk](https://github.com/bandar9994/balimda/releases/download/android-latest/Balimda-android.apk) | Open it on your phone and allow installing from your browser. Updates install over the old version and keep your chats. |
-| **Windows** 10/11 | [Balimda-Windows-Setup.exe](https://github.com/bandar9994/balimda/releases/download/desktop-latest/Balimda-Windows-Setup.exe) | If SmartScreen appears, choose **More info → Run anyway**. |
-| **Mac** (M1 and newer) | [Balimda-macOS-AppleSilicon.dmg](https://github.com/bandar9994/balimda/releases/download/desktop-latest/Balimda-macOS-AppleSilicon.dmg) | Drag Balimda to Applications. The first time, right-click it and choose **Open**. |
-| **Mac** (Intel) | [Balimda-macOS-Intel.dmg](https://github.com/bandar9994/balimda/releases/download/desktop-latest/Balimda-macOS-Intel.dmg) | Same as above. |
-| **Linux** | [AppImage](https://github.com/bandar9994/balimda/releases/download/desktop-latest/Balimda-Linux.AppImage) · [.deb](https://github.com/bandar9994/balimda/releases/download/desktop-latest/Balimda-Linux.deb) | |
+| **Android** | [Najwa-AI-android.apk](https://github.com/bandar9994/najwa-ai/releases/download/android-latest/Najwa-AI-android.apk) | Open it on your phone and allow installing from your browser. Updates install over the old version and keep your chats. |
+| **Windows** 10/11 | [Najwa-AI-Windows-Setup.exe](https://github.com/bandar9994/najwa-ai/releases/download/desktop-latest/Najwa-AI-Windows-Setup.exe) | If SmartScreen appears, choose **More info → Run anyway**. |
+| **Mac** (M1 and newer) | [Najwa-AI-macOS-AppleSilicon.dmg](https://github.com/bandar9994/najwa-ai/releases/download/desktop-latest/Najwa-AI-macOS-AppleSilicon.dmg) | Drag Najwa AI to Applications. The first time, right-click it and choose **Open**. |
+| **Mac** (Intel) | [Najwa-AI-macOS-Intel.dmg](https://github.com/bandar9994/najwa-ai/releases/download/desktop-latest/Najwa-AI-macOS-Intel.dmg) | Same as above. |
+| **Linux** | [AppImage](https://github.com/bandar9994/najwa-ai/releases/download/desktop-latest/Najwa-AI-Linux.AppImage) · [.deb](https://github.com/bandar9994/najwa-ai/releases/download/desktop-latest/Najwa-AI-Linux.deb) | |
 
 iOS is on the way.
 
 ## Get started in three steps
 
-1. **Install Balimda** on your phone, your computer, or both.
+1. **Install Najwa AI** on your phone, your computer, or both.
 2. **Pick a model.** On the phone, open **Settings → Models & providers** and download one (Qwen 2.5 1.5B is a great start, and it speaks Arabic). On the computer, install [Ollama](https://ollama.com) and run `ollama pull qwen3:8b`, or paste a Claude or OpenAI key.
 3. **Turn on sync** (optional) in **Settings → Sync** on each device with the same Google account and passphrase. Then turn on **Let my phone use this computer's models** on your computer if you'd like your phone to use it.
 
@@ -200,15 +202,21 @@ The **[user guide](docs/GUIDE.md)** covers everything else: the model list, GPU 
 ## Questions
 
 <details>
+<summary><b>I used Balimda. What changes?</b></summary>
+
+Only the name. Balimda is now Najwa AI (نجوى, "a private conversation"). The new version installs over the old one on your phone and computer and keeps all your chats, memory, settings and keys. On a Mac, the new app is called Najwa AI, so you can delete the old Balimda app from Applications after you open it.
+</details>
+
+<details>
 <summary><b>Is it really free?</b></summary>
 
 Yes, for personal, non-commercial use. There are no accounts, subscriptions or ads. Cloud models (Claude, OpenAI) are billed by those companies to your own API key, and only if you choose to use them.
 </details>
 
 <details>
-<summary><b>Can my company use Balimda?</b></summary>
+<summary><b>Can my company use Najwa AI?</b></summary>
 
-Yes, with a commercial license. Any use by or for a company or organisation, including your staff using it for work, needs one. [Request a quote](https://github.com/bandar9994/balimda/issues/new?template=commercial-license.yml).
+Yes, with a commercial license. Any use by or for a company or organisation, including your staff using it for work, needs one. [Request a quote](https://github.com/bandar9994/najwa-ai/issues/new?template=commercial-license.yml).
 </details>
 
 <details>
@@ -232,7 +240,7 @@ Any recent Android phone. Small models (0.5B–1.5B) run on most phones; 3B–4B
 <details>
 <summary><b>Can I use my computer's models from my phone when I'm away from home?</b></summary>
 
-Yes. Install [Tailscale](https://tailscale.com) (free) on the computer and the phone and sign in with the same account. Balimda finds the computer over Tailscale by itself. Balimda must be open on the computer.
+Yes. Install [Tailscale](https://tailscale.com) (free) on the computer and the phone and sign in with the same account. Najwa AI finds the computer over Tailscale by itself. Najwa AI must be open on the computer.
 </details>
 
 <details>
@@ -243,23 +251,23 @@ It can't be recovered, because nobody else ever has it. Your chats are still on 
 
 ## For businesses
 
-Want Balimda for your team, or inside a product or service? Balimda keeps your company's conversations on your own devices and servers: run models on your own hardware, or on cloud models with your own keys, with no third-party chat service in between.
+Want Najwa AI for your team, or inside a product or service? Najwa AI keeps your company's conversations on your own devices and servers: run models on your own hardware, or on cloud models with your own keys, with no third-party chat service in between.
 
 Use by or for a company or organisation needs a **commercial license**. Tell us what you need and you'll get a quote:
 
-<p align="center"><a href="https://github.com/bandar9994/balimda/issues/new?template=commercial-license.yml"><b>→ Request a commercial license</b></a></p>
+<p align="center"><a href="https://github.com/bandar9994/najwa-ai/issues/new?template=commercial-license.yml"><b>→ Request a commercial license</b></a></p>
 
-## Support Balimda
+## Support Najwa AI
 
-Balimda is made by one person, with no ads, no tracking and no subscriptions. If it's useful to you, you can support its development:
+Najwa AI is made by one person, with no ads, no tracking and no subscriptions. If it's useful to you, you can support its development:
 
-<p align="center"><a href="https://ko-fi.com/bandaraltariqi"><b>☕ Support Balimda on Ko-fi</b></a></p>
+<p align="center"><a href="https://ko-fi.com/bandaraltariqi"><b>☕ Support Najwa AI on Ko-fi</b></a></p>
 
 Telling a friend or starring this repository helps too.
 
 ## For developers
 
-Balimda is one codebase for every platform: an Electron desktop app and a Capacitor Android app that share the same interface, storage, sync and model code. See **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)** to build it and find your way around.
+Najwa AI is one codebase for every platform: an Electron desktop app and a Capacitor Android app that share the same interface, storage, sync and model code. See **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)** to build it and find your way around.
 
 ```bash
 npm install
@@ -269,16 +277,16 @@ npm test    # run the tests
 
 ## License
 
-**Balimda © 2026 Bandar Altariqi. All rights reserved.** Released under the [Balimda License](LICENSE):
+**Najwa AI © 2026 Bandar Altariqi. All rights reserved.** Released under the [Najwa AI License](LICENSE):
 
 - ✅ Use, study, change and share it **for personal, non-commercial purposes**.
-- ✅ Keep the **Balimda** name, logo and icon, and credit **"Balimda by Bandar Altariqi"** with a link to this repository. Changed versions must say they were changed.
+- ✅ Keep the **Najwa AI** name, logo and icon, and credit **"Najwa AI by Bandar Altariqi"** with a link to this repository. Changed versions must say they were changed.
 - ❌ **No rebranding**: no renaming, removing the brand, or publishing it under another name or author.
-- ❌ **No commercial or organisational use** without a commercial license from Bandar Altariqi. That includes use by or for a company (even by its staff for work), selling it, paid products or services, ads and subscriptions. [Request a quote](https://github.com/bandar9994/balimda/issues/new?template=commercial-license.yml).
+- ❌ **No commercial or organisational use** without a commercial license from Bandar Altariqi. That includes use by or for a company (even by its staff for work), selling it, paid products or services, ads and subscriptions. [Request a quote](https://github.com/bandar9994/najwa-ai/issues/new?template=commercial-license.yml).
 
-Balimda is built on great open-source work, including llama.cpp, wllama, Electron, Capacitor, marked and DOMPurify. See [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). AI models belong to their creators and have their own licenses.
+Najwa AI is built on great open-source work, including llama.cpp, wllama, Electron, Capacitor, marked and DOMPurify. See [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). AI models belong to their creators and have their own licenses.
 
 <div align="center">
 <br>
-<b>Balimda by Bandar Altariqi</b>
+<b>Najwa AI by Bandar Altariqi</b>
 </div>

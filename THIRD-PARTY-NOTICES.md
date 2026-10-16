@@ -1,8 +1,8 @@
 # Third-party notices
 
-Balimda is © 2026 Bandar Altariqi and licensed under the [Balimda License](LICENSE).
+Najwa AI is © 2026 Bandar Altariqi and licensed under the [Najwa AI License](LICENSE).
 It is built with the open-source components below. Each one remains under
-its own license, and the Balimda License does not change or limit it.
+its own license, and the Najwa AI License does not change or limit it.
 
 | Component | Used for | License | Copyright |
 |---|---|---|---|
@@ -45,7 +45,7 @@ copyright lines shown in the table:
 
 ## AI models
 
-Models you download inside Balimda (for example Llama, Qwen, Gemma and SmolLM2)
+Models you download inside Najwa AI (for example Llama, Qwen, Gemma and SmolLM2)
 are made by their creators and come with their own licenses and usage policies.
-Balimda does not include them. It only downloads them from Hugging Face when you
+Najwa AI does not include them. It only downloads them from Hugging Face when you
 choose to.

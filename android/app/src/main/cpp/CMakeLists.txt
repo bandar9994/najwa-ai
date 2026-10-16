@@ -1,8 +1,8 @@
-# Balimda — © 2026 Bandar Altariqi. All rights reserved.
-# Licensed under the Balimda License (see LICENSE): non-commercial use only;
-# keep the Balimda name and the "Balimda by Bandar Altariqi" credit; no rebranding.
+# Najwa AI — © 2026 Bandar Altariqi. All rights reserved.
+# Licensed under the Najwa AI License (see LICENSE): non-commercial use only;
+# keep the Najwa AI name and the "Najwa AI by Bandar Altariqi" credit; no rebranding.
 
-# Native llama.cpp engine for Balimda on Android: CPU (ARM NEON/dotprod) plus
+# Native llama.cpp engine for Najwa AI on Android: CPU (ARM NEON/dotprod) plus
 # the OpenCL backend that Qualcomm tunes for Adreno GPUs.
 cmake_minimum_required(VERSION 3.22)
 project(balimda_llama C CXX)

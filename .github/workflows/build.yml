@@ -49,7 +49,7 @@ jobs:
             exit 0
           fi
           node -e "require('fs').writeFileSync('google-oauth.json', JSON.stringify({ clientId: process.env.GOOGLE_CLIENT_ID, clientSecret: process.env.GOOGLE_CLIENT_SECRET }))"
-      # Whisper, for talking to Balimda on the computer (see scripts/build-whisper.js).
+      # Whisper, for talking to Najwa AI on the computer (see scripts/build-whisper.js).
       - name: Build speech recognition (Whisper)
         run: node scripts/build-whisper.js
       - run: npx electron-builder --publish never
@@ -92,11 +92,11 @@ jobs:
           mkdir out
           for f in artifacts/*; do
             case "$f" in
-              *.exe) cp "$f" out/Balimda-Windows-Setup.exe ;;
-              *arm64*.dmg) cp "$f" out/Balimda-macOS-AppleSilicon.dmg ;;
-              *.dmg) cp "$f" out/Balimda-macOS-Intel.dmg ;;
-              *.AppImage) cp "$f" out/Balimda-Linux.AppImage ;;
-              *.deb) cp "$f" out/Balimda-Linux.deb ;;
+              *.exe) cp "$f" out/Najwa-AI-Windows-Setup.exe ;;
+              *arm64*.dmg) cp "$f" out/Najwa-AI-macOS-AppleSilicon.dmg ;;
+              *.dmg) cp "$f" out/Najwa-AI-macOS-Intel.dmg ;;
+              *.AppImage) cp "$f" out/Najwa-AI-Linux.AppImage ;;
+              *.deb) cp "$f" out/Najwa-AI-Linux.deb ;;
             esac
           done
           ls -la out
@@ -105,9 +105,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          notes="Newest desktop build (from ${GITHUB_SHA::7}, $(date -u '+%Y-%m-%d %H:%M UTC')). Windows: Balimda-Windows-Setup.exe. Mac: Balimda-macOS-AppleSilicon.dmg (M1 and newer) or Balimda-macOS-Intel.dmg. Linux: Balimda-Linux.AppImage or Balimda-Linux.deb."
+          notes="Newest desktop build (from ${GITHUB_SHA::7}, $(date -u '+%Y-%m-%d %H:%M UTC')). Windows: Najwa-AI-Windows-Setup.exe. Mac: Najwa-AI-macOS-AppleSilicon.dmg (M1 and newer) or Najwa-AI-macOS-Intel.dmg. Linux: Najwa-AI-Linux.AppImage or Najwa-AI-Linux.deb."
           if ! gh release view desktop-latest >/dev/null 2>&1; then
-            gh release create desktop-latest --prerelease --target "$GITHUB_SHA" --title "Balimda for Windows, macOS and Linux (latest build)" --notes "$notes"
+            gh release create desktop-latest --prerelease --target "$GITHUB_SHA" --title "Najwa AI for Windows, macOS and Linux (latest build)" --notes "$notes"
           fi
           gh release upload desktop-latest out/* --clobber
-          gh release edit desktop-latest --notes "$notes"
+          # Files from before the app was renamed (Balimda -> Najwa AI).
+          gh release view desktop-latest --json assets --jq '.assets[].name' | { grep -E '^Balimda-' || true; } | while read -r old; do
+            gh release delete-asset desktop-latest "$old" --yes || true
+          done
+          gh release edit desktop-latest --title "Najwa AI for Windows, macOS and Linux (latest build)" --notes "$notes"

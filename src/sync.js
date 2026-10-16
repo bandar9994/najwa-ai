@@ -1,6 +1,6 @@
-// Balimda — © 2026 Bandar Altariqi. All rights reserved.
-// Licensed under the Balimda License (see LICENSE): non-commercial use only;
-// keep the Balimda name and the "Balimda by Bandar Altariqi" credit; no rebranding.
+// Najwa AI — © 2026 Bandar Altariqi. All rights reserved.
+// Licensed under the Najwa AI License (see LICENSE): non-commercial use only;
+// keep the Najwa AI name and the "Najwa AI by Bandar Altariqi" credit; no rebranding.
 
 // Sync between devices through storage the user owns: Google Drive's hidden
 // app folder, or a private GitHub repository.
@@ -84,7 +84,7 @@ async function seal(key, value) {
 
 async function unseal(key, text) {
   const bytes = fromBase64(text);
-  if (bytes[0] !== FORMAT) throw new SyncError('The synced data was made by a newer version of Balimda. Update the app on this device.');
+  if (bytes[0] !== FORMAT) throw new SyncError('The synced data was made by a newer version of Najwa AI. Update the app on this device.');
   let plain;
   try {
     plain = await subtle().decrypt({ name: 'AES-GCM', iv: bytes.subarray(1, 13) }, key, bytes.subarray(13));
@@ -187,9 +187,9 @@ class GitHub {
 
   // Creates the first commit in an empty repository.
   async init(branch) {
-    const readme = '# Balimda sync\n\nEncrypted chat sync data for the Balimda app. The files are encrypted on the device and cannot be read without the sync passphrase. Do not edit them.\n';
+    const readme = '# Najwa AI sync\n\nEncrypted chat sync data for the Najwa AI app. The files are encrypted on the device and cannot be read without the sync passphrase. Do not edit them.\n';
     const r = await this.req('PUT', '/contents/README.md', {
-      message: 'Set up Balimda sync',
+      message: 'Set up Najwa AI sync',
       content: toBase64(utf8.encode(readme)),
       branch
     });
@@ -273,7 +273,7 @@ class GitHubRemote {
         baseTree: tree,
         writes: [{ path: META_FILE, text }],
         deletes: [],
-        message: 'Set up Balimda sync (encrypted)'
+        message: 'Set up Najwa AI sync (encrypted)'
       });
     } catch (err) {
       // Another device set it up at the same moment: use theirs.
@@ -322,14 +322,14 @@ function driveError(status, data) {
   const reason = data && data.error && ((data.error.errors && data.error.errors[0] && data.error.errors[0].reason) || data.error.status);
   const msg = (data && data.error && data.error.message) || '';
   if (status === 401) return 'Google sign-in has expired. Open Settings → Sync and sign in again.';
-  if (reason === 'storageQuotaExceeded') return 'Your Google Drive is full, so Balimda cannot save your chats there.';
+  if (reason === 'storageQuotaExceeded') return 'Your Google Drive is full, so Najwa AI cannot save your chats there.';
   if (status === 429 || /rate ?limit/i.test(String(reason))) return 'Google Drive is busy. Sync will try again in a few minutes.';
   if (status === 403 && /disabled|has not been used/i.test(msg)) return 'The Google Drive API is not enabled for this app. See the setup guide.';
   return `Google Drive error ${status}${msg ? `: ${msg}` : ''}`;
 }
 
-// Google Drive's hidden app folder as a sync destination. Only Balimda can
-// see this folder, and Balimda cannot see anything else in the user's Drive.
+// Google Drive's hidden app folder as a sync destination. Only Najwa AI can
+// see this folder, and Najwa AI cannot see anything else in the user's Drive.
 // Each chat is its own file; its modifiedAt and deleted flag are kept in the
 // file's appProperties, so listing the folder is the chat index.
 class DriveRemote {
@@ -663,7 +663,7 @@ async function newMeta(passphrase) {
 // The key for existing sync data, if the passphrase is right.
 async function keyFromMeta(text, passphrase) {
   const meta = JSON.parse(text);
-  if (meta.app !== 'balimda' || meta.format > FORMAT) throw new SyncError('This sync data is from a newer version of Balimda. Update the app.');
+  if (meta.app !== 'balimda' || meta.format > FORMAT) throw new SyncError('This sync data is from a newer version of Najwa AI. Update the app.');
   const keyBytes = await deriveKeyBytes(passphrase, fromBase64(meta.salt), meta.iterations);
   const check = await unseal(await importKey(keyBytes), meta.check).catch(() => null);
   if (check !== CHECK_TEXT) throw new SyncError('Wrong sync passphrase. Use the same passphrase you chose on your first device.');

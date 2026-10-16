@@ -1,6 +1,6 @@
-// Balimda — © 2026 Bandar Altariqi. All rights reserved.
-// Licensed under the Balimda License (see LICENSE): non-commercial use only;
-// keep the Balimda name and the "Balimda by Bandar Altariqi" credit; no rebranding.
+// Najwa AI — © 2026 Bandar Altariqi. All rights reserved.
+// Licensed under the Najwa AI License (see LICENSE): non-commercial use only;
+// keep the Najwa AI name and the "Najwa AI by Bandar Altariqi" credit; no rebranding.
 
 // Builds the mobile web app into www/ for Capacitor (Android / iOS).
 // It reuses the desktop UI from renderer/ and swaps the Electron bridge for
@@ -43,7 +43,7 @@ await build({
   minify: true,
   sourcemap: false,
   legalComments: 'none',
-  banner: { js: '/*! Balimda — © 2026 Bandar Altariqi. All rights reserved. Balimda License (non-commercial; keep the Balimda name and "Balimda by Bandar Altariqi" credit; no rebranding). Includes third-party software under their own licenses; see THIRD-PARTY-NOTICES.md. */' },
+  banner: { js: '/*! Najwa AI — © 2026 Bandar Altariqi. All rights reserved. Najwa AI License (non-commercial; keep the Najwa AI name and "Najwa AI by Bandar Altariqi" credit; no rebranding). Includes third-party software under their own licenses; see THIRD-PARTY-NOTICES.md. */' },
   define: { 'process.env.NODE_ENV': '"production"' },
   logLevel: 'warning'
 });
@@ -71,7 +71,7 @@ replace('content="width=device-width, initial-scale=1"', 'content="width=device-
 replace('../node_modules/marked/lib/marked.umd.js', 'vendor/marked.umd.js');
 replace('../node_modules/dompurify/dist/purify.min.js', 'vendor/purify.min.js');
 replace('<script src="app.js"></script>', '<script src="bridge.js"></script>\n  <script src="app.js"></script>');
-replace('<title>Balimda</title>', '<title>Balimda</title>\n  <meta name="theme-color" content="#5b5bd6" />\n  <link rel="icon" href="icon.png" />');
+replace('<title>Najwa AI</title>', '<title>Najwa AI</title>\n  <meta name="theme-color" content="#5b5bd6" />\n  <link rel="icon" href="icon.png" />');
 await fs.writeFile(path.join(out, 'index.html'), html);
 
 console.log('Built mobile web app into www/');

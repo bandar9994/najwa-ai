@@ -1,6 +1,6 @@
-// Balimda — © 2026 Bandar Altariqi. All rights reserved.
-// Licensed under the Balimda License (see LICENSE): non-commercial use only;
-// keep the Balimda name and the "Balimda by Bandar Altariqi" credit; no rebranding.
+// Najwa AI — © 2026 Bandar Altariqi. All rights reserved.
+// Licensed under the Najwa AI License (see LICENSE): non-commercial use only;
+// keep the Najwa AI name and the "Najwa AI by Bandar Altariqi" credit; no rebranding.
 
 package com.bandar9994.balimda;
 
@@ -92,7 +92,7 @@ public class VoicePlugin extends Plugin {
         if (getPermissionState("microphone") == PermissionState.GRANTED) {
             main.post(() -> startListening(call));
         } else {
-            call.reject("Balimda needs the microphone to hear you. Allow it in the phone's Settings → Apps → Balimda → Permissions.", "mic-denied");
+            call.reject("Najwa AI needs the microphone to hear you. Allow it in the phone's Settings → Apps → Najwa AI → Permissions.", "mic-denied");
         }
     }
 
@@ -211,7 +211,7 @@ public class VoicePlugin extends Plugin {
                     finishListening(null, "The phone's speech recognition didn't start (error " + error
                         + (using != null ? ", " + using.getPackageName() : "") + "). Make sure \"Speech Services by Google\" "
                         + "(or the Google app) is installed and up to date, and set it as the phone's voice input "
-                        + "(Settings → search for \"voice input\"). Or turn on \"Private voice\" in Balimda's Settings → Voice.");
+                        + "(Settings → search for \"voice input\"). Or turn on \"Private voice\" in Najwa AI's Settings → Voice.");
                     return;
                 }
                 onListenError(error, intent, offline, lang);
@@ -235,7 +235,7 @@ public class VoicePlugin extends Plugin {
                 finishListening(null, "Google's speech recognition is busy right now. Wait a moment, or turn on \"Private voice\" in Settings → Voice.");
                 return;
             case SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS:
-                finishListening(null, "Balimda needs the microphone to hear you. Allow it in the phone's Settings → Apps → Balimda → Permissions.");
+                finishListening(null, "Najwa AI needs the microphone to hear you. Allow it in the phone's Settings → Apps → Najwa AI → Permissions.");
                 return;
             case SpeechRecognizer.ERROR_NETWORK:
             case SpeechRecognizer.ERROR_NETWORK_TIMEOUT:

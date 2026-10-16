@@ -1,6 +1,6 @@
-// Balimda — © 2026 Bandar Altariqi. All rights reserved.
-// Licensed under the Balimda License (see LICENSE): non-commercial use only;
-// keep the Balimda name and the "Balimda by Bandar Altariqi" credit; no rebranding.
+// Najwa AI — © 2026 Bandar Altariqi. All rights reserved.
+// Licensed under the Najwa AI License (see LICENSE): non-commercial use only;
+// keep the Najwa AI name and the "Najwa AI by Bandar Altariqi" credit; no rebranding.
 
 // Mobile (Capacitor) implementation of the `window.balimda` API that the shared
 // UI in renderer/app.js talks to. On desktop the same API comes from
@@ -260,7 +260,7 @@ window.balimda = {
       try {
         data = JSON.parse(text);
       } catch {
-        throw new Error('This file isn\'t a Balimda backup (it can\'t be read as one).');
+        throw new Error('This file isn\'t a Najwa AI backup (it can\'t be read as one).');
       }
       return { count: await s.importAll(data) };
     })
@@ -279,7 +279,7 @@ window.balimda = {
         version,
         dataDir: 'Private app storage on this phone',
         platform: Capacitor.getPlatform(),
-        appName: 'Balimda',
+        appName: 'Najwa AI',
         icon: 'icon.png',
         mobile: true,
         onDevice: true,

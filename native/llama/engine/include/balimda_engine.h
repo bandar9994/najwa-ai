@@ -1,8 +1,8 @@
-// Balimda — © 2026 Bandar Altariqi. All rights reserved.
-// Licensed under the Balimda License (see LICENSE): non-commercial use only;
-// keep the Balimda name and the "Balimda by Bandar Altariqi" credit; no rebranding.
+// Najwa AI — © 2026 Bandar Altariqi. All rights reserved.
+// Licensed under the Najwa AI License (see LICENSE): non-commercial use only;
+// keep the Najwa AI name and the "Najwa AI by Bandar Altariqi" credit; no rebranding.
 
-// Balimda's on-device engine: llama.cpp with the chat handling Balimda needs
+// Najwa AI's on-device engine: llama.cpp with the chat handling Najwa AI needs
 // (the model's own chat template, keeping as much of the chat as fits, and
 // reusing the KV cache between turns). A plain C interface, so the Android
 // app (through JNI, balimda_llama.cpp) and the iOS app (from Swift) share it.

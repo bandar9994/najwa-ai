@@ -1,16 +1,16 @@
 # Setting up Google Drive sync (one time, for the app owner)
 
-Balimda's users just tap **Sign in with Google**. For that button to work, Google
+Najwa AI's users just tap **Sign in with Google**. For that button to work, Google
 needs to know the app once. You do this in Google Cloud Console with your
 Google account. It's free and takes about 15 minutes.
 
-Balimda only asks for **`drive.appdata`**: its own hidden folder in the user's
+Najwa AI only asks for **`drive.appdata`**: its own hidden folder in the user's
 Drive. Google classes this as a *non-sensitive* scope, so the app only needs
 basic verification, with no security review.
 
 ## 1. Create the project and turn on the Drive API
 
-1. Open [console.cloud.google.com](https://console.cloud.google.com/) and create a project named **Balimda**.
+1. Open [console.cloud.google.com](https://console.cloud.google.com/) and create a project named **Najwa AI**.
 2. Go to **APIs & Services → Library**, search for **Google Drive API** and click **Enable**.
 
 ## 2. Describe the app (consent screen)
@@ -18,7 +18,7 @@ basic verification, with no security review.
 Open **Google Auth Platform** (in the menu, or search for "OAuth consent screen").
 
 - **Branding**:
-  - App name **Balimda** and your support email.
+  - App name **Najwa AI** and your support email.
   - Logo: `site/logo-120.png` (120×120). Adding a logo means Google must verify the app before it shows the logo, so add it when you publish.
   - Home page: `https://bandar9994.github.io/`
   - Privacy policy: `https://bandar9994.github.io/privacy.html`
@@ -32,7 +32,7 @@ While the app is in **Testing**, only the Google accounts you add under **Audien
 
 ## 3. Desktop client (Windows, macOS, Linux)
 
-1. **Clients → Create client**. Application type **Desktop app**, name **Balimda desktop**.
+1. **Clients → Create client**. Application type **Desktop app**, name **Najwa AI desktop**.
 2. Copy the **Client ID** and **Client secret**.
 3. In GitHub, open the repository's **Settings → Secrets and variables → Actions** and add:
    - `BALIMDA_GOOGLE_CLIENT_ID`: the client ID
@@ -43,7 +43,7 @@ The **Build installers** workflow puts them into the desktop app. Google treats 
 ## 4. Android client
 
 1. Open the latest **Android app** run in the repository's **Actions** tab. Its summary shows **SHA-1 certificate fingerprint (your private key)**. Copy it.
-2. **Clients → Create client**. Application type **Android**, name **Balimda Android**:
+2. **Clients → Create client**. Application type **Android**, name **Najwa AI Android**:
    - Package name: `com.bandar9994.balimda`
    - SHA-1 certificate fingerprint: the value from step 1
 3. Click **Create**. There's nothing to copy, because Android recognises the app by its package name and signature.

@@ -1,6 +1,6 @@
-// Balimda — © 2026 Bandar Altariqi. All rights reserved.
-// Licensed under the Balimda License (see LICENSE): non-commercial use only;
-// keep the Balimda name and the "Balimda by Bandar Altariqi" credit; no rebranding.
+// Najwa AI — © 2026 Bandar Altariqi. All rights reserved.
+// Licensed under the Najwa AI License (see LICENSE): non-commercial use only;
+// keep the Najwa AI name and the "Najwa AI by Bandar Altariqi" credit; no rebranding.
 
 const { contextBridge, ipcRenderer } = require('electron');
 
@@ -34,7 +34,7 @@ async function listen({ lang, model } = {}) {
     });
   } catch (err) {
     throw new Error(err.name === 'NotAllowedError'
-      ? "Balimda isn't allowed to use the microphone. Allow it in your computer's privacy settings (Microphone), then try again."
+      ? "Najwa AI isn't allowed to use the microphone. Allow it in your computer's privacy settings (Microphone), then try again."
       : err.name === 'NotFoundError' ? 'No microphone found. Connect one and try again.' : `Couldn't use the microphone: ${err.message}`);
   } finally {
     if (starting === start) starting = null;
@@ -158,7 +158,7 @@ async function speak({ text, lang = 'en-US', rate = 1 } = {}) {
   if (!voice) {
     const name = /^ar/i.test(lang) ? 'Arabic' : 'English';
     throw new Error(`This computer has no ${name} voice to read replies. Windows: Settings → Time & language → Speech → Add voices. ` +
-      `Mac: System Settings → Accessibility → Spoken Content → System voice → Manage Voices. Then restart Balimda.`);
+      `Mac: System Settings → Accessibility → Spoken Content → System voice → Manage Voices. Then restart Najwa AI.`);
   }
   return new Promise((resolve) => {
     const u = new SpeechSynthesisUtterance(text);
