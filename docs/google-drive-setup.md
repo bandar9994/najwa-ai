@@ -50,7 +50,17 @@ The **Build installers** workflow puts them into the desktop app. Google treats 
 
 If the fingerprint is missing or wrong, the phone shows *"Google sign-in is not set up for this copy of the app yet"*.
 
-## 5. Try it
+## 5. iPhone client
+
+1. **Clients → Create client**. Application type **iOS**, name **Najwa AI iPhone**:
+   - Bundle ID: `com.bandar9994.balimda`
+2. Click **Create** and copy the **Client ID** (it ends in `.apps.googleusercontent.com`). It isn't a secret: iPhone apps can't keep secrets, so Google's iOS clients don't have one.
+3. In the repository, open **Settings → Secrets and variables → Actions → Variables** and add a variable `GOOGLE_IOS_CLIENT_ID` with that Client ID.
+
+The next **iOS app** build on `main` includes it. Until then, the iPhone app only offers GitHub sync.
+
+## 6. Try it
 
 - **Phone**: install the latest APK, then open **Settings → Sync → Google Drive**, enter a passphrase and tap **Sign in with Google**.
+- **iPhone**: install the latest build, then do the same as on Android. Google's sign-in page opens in a sheet inside the app.
 - **PC**: after the secrets are added, the next **Build installers** run (on `main` or a `v*` tag) makes installers with Google sign-in. Set up sync with the same Google account and passphrase.
