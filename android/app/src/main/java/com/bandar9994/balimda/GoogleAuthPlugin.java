@@ -1,6 +1,6 @@
-// Balimda — © 2026 Bandar Altariqi. All rights reserved.
-// Licensed under the Balimda License (see LICENSE): non-commercial use only;
-// keep the Balimda name and the "Balimda by Bandar Altariqi" credit; no rebranding.
+// Najwa AI — © 2026 Bandar Altariqi. All rights reserved.
+// Licensed under the Najwa AI License (see LICENSE): non-commercial use only;
+// keep the Najwa AI name and the "Najwa AI by Bandar Altariqi" credit; no rebranding.
 
 package com.bandar9994.balimda;
 
@@ -36,7 +36,7 @@ import java.util.concurrent.Executors;
 
 /**
  * Google sign-in for Drive sync, using Google Play services' account picker.
- * Balimda only asks for its own hidden app folder in Drive (drive.appdata).
+ * Najwa AI only asks for its own hidden app folder in Drive (drive.appdata).
  * Play services keeps the grant and renews access tokens, so nothing secret
  * is stored by the app.
  *
@@ -176,7 +176,7 @@ public class GoogleAuthPlugin extends Plugin {
         });
     }
 
-    /** { email } Remove Balimda's access to the user's Google account. */
+    /** { email } Remove Najwa AI's access to the user's Google account. */
     @PluginMethod
     public void signOut(PluginCall call) {
         String email = call.getString("email");

@@ -1,6 +1,6 @@
-// Balimda — © 2026 Bandar Altariqi. All rights reserved.
-// Licensed under the Balimda License (see LICENSE): non-commercial use only;
-// keep the Balimda name and the "Balimda by Bandar Altariqi" credit; no rebranding.
+// Najwa AI — © 2026 Bandar Altariqi. All rights reserved.
+// Licensed under the Najwa AI License (see LICENSE): non-commercial use only;
+// keep the Najwa AI name and the "Najwa AI by Bandar Altariqi" credit; no rebranding.
 
 /* global marked, DOMPurify, SpeechText */
 'use strict';
@@ -122,13 +122,13 @@ function displayModel(name) {
 
 // Ownership and license, shown on the About page. See LICENSE.
 const AUTHOR = 'Bandar Altariqi';
-const PROJECT_URL = 'https://github.com/bandar9994/balimda';
+const PROJECT_URL = 'https://github.com/bandar9994/najwa-ai';
 const COPYRIGHT = `© 2026 ${AUTHOR}. All rights reserved.`;
 const COMMERCIAL_URL = `${PROJECT_URL}/issues/new?template=commercial-license.yml`;
 const SUPPORT_URL = 'https://ko-fi.com/bandaraltariqi';
 
 function appName() {
-  return (S.info && S.info.appName) || 'Balimda';
+  return (S.info && S.info.appName) || 'Najwa AI';
 }
 
 function providerLabel(id) {
@@ -467,7 +467,7 @@ function modelNote(chat, model) {
     const wanted = mine || chat.model;
     if (!wanted) return '';
     if (wanted.provider === 'onDevice') return `${displayModel(wanted.model)} isn't on this phone any more. Download it again in Settings → Models & providers, or pick another model at the top.`;
-    if (wanted.provider === 'computer') return `${displayModel(wanted.model)} isn't available right now. Check that the computer is on with Balimda open and on the same Wi-Fi, or pick another model at the top.`;
+    if (wanted.provider === 'computer') return `${displayModel(wanted.model)} isn't available right now. Check that the computer is on with Najwa AI open and on the same Wi-Fi, or pick another model at the top.`;
     return `${displayModel(wanted.model)} isn't available right now. Check that ${providerLabel(wanted.provider)} is running, or pick another model at the top.`;
   }
   if (mine && !sameModel(mine, model)) {
@@ -1804,7 +1804,7 @@ function syncView(onCleanup, field) {
     const label = syncLabel(st);
     return [
       field('Syncing with', st.provider === 'gdrive'
-        ? h('div', {}, st.label, h('div', { class: 'help', text: 'In a hidden Balimda folder in your Drive. It uses a little of your Drive storage.' }))
+        ? h('div', {}, st.label, h('div', { class: 'help', text: 'In a hidden Najwa AI folder in your Drive. It uses a little of your Drive storage.' }))
         : link(st.label, st.link)),
       h('p', { class: `status ${label.cls}`, text: label.text }),
       st.error ? h('p', { class: 'help', text: st.error }) : null,
@@ -1861,7 +1861,7 @@ function syncView(onCleanup, field) {
   const driveForm = () => {
     const { pass, node } = passField();
     return [
-      h('p', { text: 'Your chats are kept in a hidden Balimda folder in your Google Drive. Balimda cannot see anything else in your Drive, and your chats are encrypted on this device first, so not even Google can read them.' }),
+      h('p', { text: 'Your chats are kept in a hidden Najwa AI folder in your Google Drive. Najwa AI cannot see anything else in your Drive, and your chats are encrypted on this device first, so not even Google can read them.' }),
       h('ol', { class: 'steps' },
         h('li', {}, 'Choose a sync passphrase below.'),
         h('li', {}, S.info.mobile ? 'Tap the button and pick your Google account.' : 'Click the button, then sign in to Google in your browser.'),
@@ -1937,7 +1937,7 @@ function shareWithPhoneCard(s, check, onCleanup) {
     else if (!s.shareWithPhone) status.textContent = '';
     else if (!st.syncReady) status.textContent = 'Set up sync (Settings → Sync) on this computer and your phone first. Sharing starts as soon as sync is on.';
     else if (st.sharing) {
-      status.textContent = `Sharing as "${st.name}" on ${st.addrs.join(', ') || 'this computer'} (port ${st.port}). Your phone finds it through sync: on the phone, pick a model under "On your computer". If your system asks, allow Balimda to accept incoming network connections.`;
+      status.textContent = `Sharing as "${st.name}" on ${st.addrs.join(', ') || 'this computer'} (port ${st.port}). Your phone finds it through sync: on the phone, pick a model under "On your computer". If your system asks, allow Najwa AI to accept incoming network connections.`;
     } else status.textContent = 'Starting…';
   };
   api.remote.status().then(draw);
@@ -1953,7 +1953,7 @@ function shareWithPhoneCard(s, check, onCleanup) {
     status,
     awake,
     h('div', { class: 'help', text: 'Otherwise the computer can go to sleep while you use it from your phone (sleep settings only count the keyboard and mouse), and the phone can\'t reach it. The screen can still turn off. It always stays awake while it\'s answering the phone.' }),
-    h('div', { class: 'help', text: 'Your phone sends chats here and this computer answers with its models (Ollama, LM Studio, and your API keys, which never leave this computer). The connection is encrypted with your sync passphrase, so only your own devices can use it. Balimda needs to stay open.' }));
+    h('div', { class: 'help', text: 'Your phone sends chats here and this computer answers with its models (Ollama, LM Studio, and your API keys, which never leave this computer). The connection is encrypted with your sync passphrase, so only your own devices can use it. Najwa AI needs to stay open.' }));
 }
 
 // Settings → Voice on the computer: Whisper's model, downloaded once.
@@ -2015,13 +2015,13 @@ function desktopVoiceView(onCleanup, field, check, lang, rate, s) {
   draw();
   return [
     h('p', { class: 'help', text: 'Click the microphone in the message box to talk instead of typing: what you say is written into the box, to check before sending.' }),
-    V.avail && V.avail.recognition ? null : h('div', { class: 'notice', text: 'Speech recognition isn\'t included in this copy of Balimda, so you can\'t talk to it here. Replies can still be read aloud.' }),
+    V.avail && V.avail.recognition ? null : h('div', { class: 'notice', text: 'Speech recognition isn\'t included in this copy of Najwa AI, so you can\'t talk to it here. Replies can still be read aloud.' }),
     field('Speech recognition', list, 'Whisper turns what you say into text on this computer: nothing is sent anywhere. It\'s downloaded once. The large model understands Arabic best, but without a Mac\'s GPU or a fast processor it can take several seconds per sentence.'),
     field('The language you talk in', lang, 'Choosing the language makes Whisper more accurate. Replies are read in the language they\'re written in.'),
     check('Read replies aloud', s, 'readAloud'),
     h('div', { class: 'help', style: 'margin: -4px 0 14px 26px', text: V.avail && V.avail.tts
       ? 'Every reply is read aloud as it\'s written, with this computer\'s own voices. You can also click "Read aloud" under any reply.'
-      : 'This computer has no voices for reading aloud. On Linux, install speech-dispatcher (e.g. "sudo apt install speech-dispatcher espeak-ng"), then restart Balimda.' }),
+      : 'This computer has no voices for reading aloud. On Linux, install speech-dispatcher (e.g. "sudo apt install speech-dispatcher espeak-ng"), then restart Najwa AI.' }),
     field('Reading speed', rate)
   ];
 }
@@ -2094,10 +2094,10 @@ function openSettings(tab = 'general') {
         openaiCompatible: 'LM Studio, llama.cpp server, Jan, vLLM or any OpenAI-compatible server. LM Studio default: http://127.0.0.1:1234/v1'
       };
       help.hermes = S.info.mobile
-        ? 'Chat with your Hermes Agent. Easiest: set up Hermes in Balimda on your computer and pick "hermes-agent" under "On your computer" here, so Hermes stays private on the computer. To connect this phone directly instead, in ~/.hermes/.env set API_SERVER_ENABLED=true, API_SERVER_KEY and API_SERVER_HOST=0.0.0.0, run "hermes gateway", then enter http://<computer IP>:8642/v1 and the key here.'
-        : 'Chat with your Hermes Agent (Nous Research). In ~/.hermes/.env set API_SERVER_ENABLED=true and API_SERVER_KEY=<a long secret>, run "hermes gateway", then enter the key here. Hermes runs its tools on its own machine; Balimda shows each step and asks you before anything risky. Your phone can use it too through "Let my phone use this computer\'s models".';
+        ? 'Chat with your Hermes Agent. Easiest: set up Hermes in Najwa AI on your computer and pick "hermes-agent" under "On your computer" here, so Hermes stays private on the computer. To connect this phone directly instead, in ~/.hermes/.env set API_SERVER_ENABLED=true, API_SERVER_KEY and API_SERVER_HOST=0.0.0.0, run "hermes gateway", then enter http://<computer IP>:8642/v1 and the key here.'
+        : 'Chat with your Hermes Agent (Nous Research). In ~/.hermes/.env set API_SERVER_ENABLED=true and API_SERVER_KEY=<a long secret>, run "hermes gateway", then enter the key here. Hermes runs its tools on its own machine; Najwa AI shows each step and asks you before anything risky. Your phone can use it too through "Let my phone use this computer\'s models".';
       Object.assign(help, {
-        computer: 'Chat with the models on your computer (Ollama, LM Studio, and Claude or OpenAI with the computer\'s API keys) while the computer does the work. In Balimda on the computer, turn on "Let my phone use this computer\'s models" in Settings → Models & providers. Both need sync set up with the same passphrase; that\'s how they find each other and keep the connection private. Works on the same Wi-Fi, or anywhere when both are on Tailscale.',
+        computer: 'Chat with the models on your computer (Ollama, LM Studio, and Claude or OpenAI with the computer\'s API keys) while the computer does the work. In Najwa AI on the computer, turn on "Let my phone use this computer\'s models" in Settings → Models & providers. Both need sync set up with the same passphrase; that\'s how they find each other and keep the connection private. Works on the same Wi-Fi, or anywhere when both are on Tailscale.',
         anthropic: 'Claude models. Create an API key at console.anthropic.com.',
         openai: 'OpenAI models. Create an API key at platform.openai.com.'
       });
@@ -2143,7 +2143,7 @@ function openSettings(tab = 'general') {
           'apiKey' in p ? field('API key', bind(h('input', { class: 'input', type: 'password', value: p.apiKey, placeholder: id === 'openaiCompatible' ? 'Optional' : 'Paste your key' }), p, 'apiKey', (v) => v.trim())) : null,
           id === 'hermes' ? h('label', { class: 'check' },
             bind(h('input', { type: 'checkbox', checked: !!p.shareMemory }), p, 'shareMemory'),
-            'Also give Hermes my Balimda memory and earlier chats (Hermes has its own memory, so this is off by default)') : null,
+            'Also give Hermes my Najwa AI memory and earlier chats (Hermes has its own memory, so this is off by default)') : null,
           h('div', { class: 'help', text: help[id] || '' }),
           h('div', { style: 'margin-top:8px' }, test)));
       }
@@ -2234,7 +2234,7 @@ function openSettings(tab = 'general') {
       describePrivate();
       return [
         h('p', { class: 'help', text: 'Tap the microphone in the message box to talk instead of typing: what you say is written into the box, to check before sending.' }),
-        canListen() ? null : h('div', { class: 'notice', text: 'This phone has no speech recognition service, so you can\'t talk to Balimda yet. Install or turn on "Speech Services by Google" (Android), then restart Balimda.' }),
+        canListen() ? null : h('div', { class: 'notice', text: 'This phone has no speech recognition service, so you can\'t talk to Najwa AI yet. Install or turn on "Speech Services by Google" (Android), then restart Najwa AI.' }),
         field('The language you talk in', lang, 'You can also switch while talking. Replies are read in the language they\'re written in.'),
         check('Private voice: understand speech only on this phone', s, 'voicePrivate'),
         privateNote,
@@ -2279,15 +2279,15 @@ function openSettings(tab = 'general') {
             h('div', { class: 'help', text: `Version ${S.info.version}` }))),
         h('p', { class: 'about-by' }, 'Created by ', h('strong', { text: AUTHOR })),
         h('p', { class: 'help', text: COPYRIGHT }),
-        h('p', { text: 'Balimda is a private AI chat app that remembers every chat. It runs models on your device, on your own computer, or in the cloud. Your chats stay on your device.' }),
-        field('Support Balimda', h('div', {},
-          h('p', { class: 'help', text: 'Balimda is made by one person, with no ads, no tracking and no subscriptions. If it helps you, you can support its development.' }),
+        h('p', { text: 'Najwa AI is a private AI chat app that remembers every chat. It runs models on your device, on your own computer, or in the cloud. Your chats stay on your device.' }),
+        field('Support Najwa AI', h('div', {},
+          h('p', { class: 'help', text: 'Najwa AI is made by one person, with no ads, no tracking and no subscriptions. If it helps you, you can support its development.' }),
           h('a', { class: 'btn primary', href: SUPPORT_URL, target: '_blank', rel: 'noopener', text: '☕ Support on Ko-fi' }))),
         field('License', h('div', {},
-          h('p', { class: 'help', text: 'Free for personal, non-commercial use under the Balimda License. You may share or change it only if it keeps the Balimda name and the "Balimda by Bandar Altariqi" credit. It may not be rebranded. Use by or for a company or organisation, or any commercial use, needs a commercial license from Bandar Altariqi.' }),
+          h('p', { class: 'help', text: 'Free for personal, non-commercial use under the Najwa AI License. You may share or change it only if it keeps the Najwa AI name and the "Najwa AI by Bandar Altariqi" credit. It may not be rebranded. Use by or for a company or organisation, or any commercial use, needs a commercial license from Bandar Altariqi.' }),
           h('p', { class: 'help' }, h('a', { href: COMMERCIAL_URL, target: '_blank', rel: 'noopener', text: 'Request a commercial license for your company' })),
           h('div', { class: 'field-row' },
-            h('button', { class: 'btn', text: 'Read the license', onclick: () => showLegal('license', 'Balimda License') }),
+            h('button', { class: 'btn', text: 'Read the license', onclick: () => showLegal('license', 'Najwa AI License') }),
             h('button', { class: 'btn', text: 'Open-source credits', onclick: () => showLegal('notices', 'Third-party notices') })))),
         field('Project', h('a', { href: PROJECT_URL, target: '_blank', rel: 'noopener', text: PROJECT_URL })),
         h('p', { class: 'help', text: 'Built with llama.cpp, wllama, Electron, Capacitor, marked and DOMPurify. AI models belong to their creators and have their own licenses.' })
@@ -2370,8 +2370,8 @@ function onDeviceCard(p, changed, bind, field, onCleanup) {
     const gone = missing.filter((m) => !(m.url && downloads[m.url] && !downloads[m.url].error));
     missingBox.replaceChildren(...(gone.length ? [h('div', { class: 'od-missing' },
       h('p', { text: gone.length === 1
-        ? 'This model was removed from your phone, but not by Balimda. Balimda only deletes a model when you tap Delete, so something else on the phone removed it, often the phone\'s storage cleaner. To stop it happening again, add Balimda to the cleaner\'s ignore list.'
-        : 'These models were removed from your phone, but not by Balimda. Balimda only deletes a model when you tap Delete, so something else on the phone removed them, often the phone\'s storage cleaner. To stop it happening again, add Balimda to the cleaner\'s ignore list.' }),
+        ? 'This model was removed from your phone, but not by Najwa AI. Najwa AI only deletes a model when you tap Delete, so something else on the phone removed it, often the phone\'s storage cleaner. To stop it happening again, add Najwa AI to the cleaner\'s ignore list.'
+        : 'These models were removed from your phone, but not by Najwa AI. Najwa AI only deletes a model when you tap Delete, so something else on the phone removed them, often the phone\'s storage cleaner. To stop it happening again, add Najwa AI to the cleaner\'s ignore list.' }),
       ...gone.map((m) => h('div', { class: 'od-row' },
         h('div', { class: 'grow' },
           h('div', { class: 'od-name', text: displayModel((catalog.find((c) => c.url === m.url) || {}).name || m.name) }),

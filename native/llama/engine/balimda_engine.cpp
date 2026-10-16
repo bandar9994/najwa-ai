@@ -1,8 +1,8 @@
-// Balimda — © 2026 Bandar Altariqi. All rights reserved.
-// Licensed under the Balimda License (see LICENSE): non-commercial use only;
-// keep the Balimda name and the "Balimda by Bandar Altariqi" credit; no rebranding.
+// Najwa AI — © 2026 Bandar Altariqi. All rights reserved.
+// Licensed under the Najwa AI License (see LICENSE): non-commercial use only;
+// keep the Najwa AI name and the "Najwa AI by Bandar Altariqi" credit; no rebranding.
 
-// Balimda's on-device engine (see include/balimda_engine.h).
+// Najwa AI's on-device engine (see include/balimda_engine.h).
 //
 // One engine = one loaded model + context. Chats are formatted with the
 // model's own chat template, and the KV cache is reused between turns so only
@@ -128,12 +128,12 @@ std::string load_error(std::string reason) {
     }
     std::string msg;
     if (has("unknown model architecture") || has("unknown pre-tokenizer")) {
-        msg = "This version of Balimda can't run this kind of model yet. Try another model, or update Balimda.";
+        msg = "This version of Najwa AI can't run this kind of model yet. Try another model, or update Najwa AI.";
     } else {
         // Wrong or missing settings or parts: the file was made for another app
         // (e.g. Ollama, whose files can hold the vision part too) or by a tool
         // llama.cpp doesn't read. Downloading it again gives the same file.
-        msg = "This GGUF file isn't in the format Balimda (llama.cpp) reads. It was probably made for another app, "
+        msg = "This GGUF file isn't in the format Najwa AI (llama.cpp) reads. It was probably made for another app, "
               "such as Ollama, so downloading it again won't help. Look for a version of this model made for "
               "llama.cpp, e.g. from bartowski, unsloth or mradermacher on Hugging Face.";
     }

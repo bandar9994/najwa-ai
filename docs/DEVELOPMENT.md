@@ -1,4 +1,4 @@
-# Developing Balimda
+# Developing Najwa AI
 
 ```bash
 npm test              # unit tests: storage, providers, sync and the phone-to-computer link (mock servers, no keys needed)
@@ -24,7 +24,7 @@ npm run icons         # redraw the app icon, Android launcher icons and splash s
 - `renderer/`: the UI, in plain HTML/CSS/JS with no build step. Desktop and mobile share it.
 - `src/backends/node-fs.js`: desktop file storage.
 - `mobile/src/bridge.js`: the mobile version of the desktop bridge. It covers storage through the Capacitor Filesystem, sharing, and the Android back button.
-- `native/llama/engine/`: the on-device engine (llama.cpp with Balimda's chat handling: the model's chat template, fitting the chat into the context, reusing the KV cache between turns), behind a small C interface shared by Android and iOS.
+- `native/llama/engine/`: the on-device engine (llama.cpp with Najwa AI's chat handling: the model's chat template, fitting the chat into the context, reusing the KV cache between turns), behind a small C interface shared by Android and iOS.
 - `mobile/src/native-engine.js` + `android/app/src/main/java/com/bandar9994/balimda/LlamaPlugin.java` + `android/app/src/main/cpp/`: the engine on Android (CPU, plus Adreno GPU through OpenCL). The Android build downloads llama.cpp and compiles it; see `LLAMA_CPP_TAG` in `CMakeLists.txt`.
 - `native/llama/ios/Sources/LlamaPlugin/LlamaPlugin.swift` + `native/llama/Package.swift`: the engine on iPhone and iPad (Apple GPU through Metal), using llama.cpp's own Apple framework from the same release. Same plugin name and methods as on Android.
 - `android/.../VoicePlugin.java` + `native/llama/ios/Sources/LlamaPlugin/VoicePlugin.swift`: voice typing (the mic in the message box) and reading replies aloud on the phone, with the phone's own speech recognition (on-device only with "Private voice") and voices. `renderer/speech-text.js` turns replies into text to read aloud, a sentence at a time while they're written.

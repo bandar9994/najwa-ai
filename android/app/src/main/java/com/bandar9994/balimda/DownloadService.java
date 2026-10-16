@@ -1,6 +1,6 @@
-// Balimda — © 2026 Bandar Altariqi. All rights reserved.
-// Licensed under the Balimda License (see LICENSE): non-commercial use only;
-// keep the Balimda name and the "Balimda by Bandar Altariqi" credit; no rebranding.
+// Najwa AI — © 2026 Bandar Altariqi. All rights reserved.
+// Licensed under the Najwa AI License (see LICENSE): non-commercial use only;
+// keep the Najwa AI name and the "Najwa AI by Bandar Altariqi" credit; no rebranding.
 
 package com.bandar9994.balimda;
 
@@ -18,7 +18,7 @@ import androidx.core.app.NotificationCompat;
 import androidx.core.content.ContextCompat;
 
 /**
- * Keeps model downloads going while Balimda is in the background. Android
+ * Keeps model downloads going while Najwa AI is in the background. Android
  * cuts the network off for background apps ("Software caused connection
  * abort"); a foreground service, shown as a notification with the progress,
  * keeps it. LlamaPlugin starts it with the first download and stops it when
@@ -66,7 +66,7 @@ public class DownloadService extends Service {
         PendingIntent tap = open == null ? null : PendingIntent.getActivity(context, 0, open, PendingIntent.FLAG_IMMUTABLE);
         return new NotificationCompat.Builder(context, CHANNEL)
             .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setContentTitle("Balimda")
+            .setContentTitle("Najwa AI")
             .setContentText(text)
             .setProgress(100, Math.max(percent, 0), percent < 0)
             .setOngoing(true)

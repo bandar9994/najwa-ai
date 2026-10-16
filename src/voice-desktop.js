@@ -1,6 +1,6 @@
-// Balimda — © 2026 Bandar Altariqi. All rights reserved.
-// Licensed under the Balimda License (see LICENSE): non-commercial use only;
-// keep the Balimda name and the "Balimda by Bandar Altariqi" credit; no rebranding.
+// Najwa AI — © 2026 Bandar Altariqi. All rights reserved.
+// Licensed under the Najwa AI License (see LICENSE): non-commercial use only;
+// keep the Najwa AI name and the "Najwa AI by Bandar Altariqi" credit; no rebranding.
 
 // Voice chat in the desktop app: speech recognition with Whisper, on this
 // computer. whisper.cpp's server (built by scripts/build-whisper.js and
@@ -221,7 +221,7 @@ function createVoice({ binDir, modelsDir, onEvent = () => {}, fetch: fetchImpl =
   // then makes mistakes, so it always gets the full 30 seconds.
   async function transcribe(wav, lang, modelId, opts = {}) {
     const m = byId(modelId);
-    if (!fs.existsSync(exe)) throw new Error("Speech recognition isn't included in this copy of Balimda.");
+    if (!fs.existsSync(exe)) throw new Error("Speech recognition isn't included in this copy of Najwa AI.");
     if (!fs.existsSync(fileOf(m))) throw new Error(`Download the speech model first (Settings → Voice → ${m.name}).`);
     clearTimeout(idleTimer);
     const s = await ensureServer(m);

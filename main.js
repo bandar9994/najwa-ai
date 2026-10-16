@@ -1,6 +1,6 @@
-// Balimda — © 2026 Bandar Altariqi. All rights reserved.
-// Licensed under the Balimda License (see LICENSE): non-commercial use only;
-// keep the Balimda name and the "Balimda by Bandar Altariqi" credit; no rebranding.
+// Najwa AI — © 2026 Bandar Altariqi. All rights reserved.
+// Licensed under the Najwa AI License (see LICENSE): non-commercial use only;
+// keep the Najwa AI name and the "Najwa AI by Bandar Altariqi" credit; no rebranding.
 
 const { app, BrowserWindow, ipcMain, Menu, shell, dialog, safeStorage, nativeTheme, screen, net, systemPreferences, powerSaveBlocker } = require('electron');
 const fs = require('fs');
@@ -14,6 +14,17 @@ const { linkKey } = require('./src/remote');
 const { startRemoteServer, localAddresses } = require('./src/remote-server');
 const { createVoice } = require('./src/voice-desktop');
 const os = require('os');
+
+// The app was called Balimda before Najwa AI. Its internal name stays
+// "Balimda" (package.json's top-level productName too): it picks the data
+// folder and the system keychain entry that encrypts the saved API keys, so
+// chats and keys from before the rename are still there. People only ever
+// see "Najwa AI" (APP_NAME, and build.productName for the installers).
+const APP_NAME = 'Najwa AI';
+const INTERNAL_NAME = 'Balimda';
+app.setName(INTERNAL_NAME);
+app.setPath('userData', path.join(app.getPath('appData'), INTERNAL_NAME));
+app.setAboutPanelOptions({ applicationName: APP_NAME });
 
 // Allow a custom data folder (e.g. a synced folder) via BALIMDA_DATA_DIR.
 const dataDir = process.env.BALIMDA_DATA_DIR || path.join(app.getPath('userData'), 'data');
@@ -87,7 +98,7 @@ function googleAuth() {
   });
   return {
     ...auth,
-    // Bring Balimda back to the front once the browser part is done.
+    // Bring Najwa AI back to the front once the browser part is done.
     async signIn() {
       const result = await auth.signIn();
       if (mainWindow && !mainWindow.isDestroyed()) {
@@ -114,7 +125,7 @@ async function createWindow() {
     ...bounds,
     minWidth: 720,
     minHeight: 480,
-    title: 'Balimda',
+    title: APP_NAME,
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#16171b' : '#ffffff',
     icon: path.join(__dirname, 'build', 'icon.png'),
     show: false,
@@ -350,7 +361,22 @@ function send(channel, payload) {
 function buildMenu() {
   const isMac = process.platform === 'darwin';
   const template = [
-    ...(isMac ? [{ role: 'appMenu' }] : []),
+    // The app menu, labelled with the name people see (the default one uses
+    // the internal name, see APP_NAME).
+    ...(isMac ? [{
+      label: APP_NAME,
+      submenu: [
+        { role: 'about', label: `About ${APP_NAME}` },
+        { type: 'separator' },
+        { role: 'services' },
+        { type: 'separator' },
+        { role: 'hide', label: `Hide ${APP_NAME}` },
+        { role: 'hideOthers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit', label: `Quit ${APP_NAME}` }
+      ]
+    }] : []),
     {
       label: 'File',
       submenu: [
@@ -413,7 +439,7 @@ function registerIpc() {
     version: app.getVersion(),
     dataDir,
     platform: process.platform,
-    appName: 'Balimda',
+    appName: APP_NAME,
     icon: '../build/icon.png',
     mobile: false,
     providers: Object.fromEntries(Object.entries(PROVIDERS).map(([k, v]) => [k, v.label]))
@@ -449,7 +475,7 @@ function registerIpc() {
     try {
       data = JSON.parse(fs.readFileSync(filePaths[0], 'utf8'));
     } catch {
-      throw new Error('This file isn\'t a Balimda backup (it can\'t be read as one).');
+      throw new Error('This file isn\'t a Najwa AI backup (it can\'t be read as one).');
     }
     return { count: await storage.importAll(data) };
   });

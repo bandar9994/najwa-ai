@@ -1,8 +1,8 @@
-# Balimda privacy policy
+# Najwa AI privacy policy
 
 *Last updated: 25 September 2026*
 
-Balimda, by Bandar Altariqi, is a chat app that keeps your data on your own devices. Balimda has no servers and does not collect, sell or share any personal data.
+Najwa AI, by Bandar Altariqi, is a chat app that keeps your data on your own devices. Najwa AI has no servers and does not collect, sell or share any personal data.
 
 ## What stays on your device
 
@@ -20,14 +20,14 @@ When you send a message, it goes only to the model you picked:
 
 If you turn on sync, your chats, assistants and memory are copied to storage **you** own:
 
-- **Google Drive**: a hidden app folder in your Drive. Balimda asks only for the `drive.appdata` permission, so it can use its own folder and cannot see any of your other files.
+- **Google Drive**: a hidden app folder in your Drive. Najwa AI asks only for the `drive.appdata` permission, so it can use its own folder and cannot see any of your other files.
 - **GitHub**: a private repository you create.
 
-Before anything is uploaded, it is encrypted on your device with a key made from your sync passphrase (AES-256-GCM). Google and GitHub store only encrypted data and cannot read your chats. Balimda's author has no access to it either.
+Before anything is uploaded, it is encrypted on your device with a key made from your sync passphrase (AES-256-GCM). Google and GitHub store only encrypted data and cannot read your chats. Najwa AI's author has no access to it either.
 
-Balimda uses Google user data only to store and read back your own encrypted sync files. It does not transfer Google user data to anyone else, use it for advertising, or let people read it. Its use of data from Google APIs follows the [Google API Services User Data Policy](https://developers.google.com/terms/api-services-user-data-policy), including the Limited Use requirements.
+Najwa AI uses Google user data only to store and read back your own encrypted sync files. It does not transfer Google user data to anyone else, use it for advertising, or let people read it. Its use of data from Google APIs follows the [Google API Services User Data Policy](https://developers.google.com/terms/api-services-user-data-policy), including the Limited Use requirements.
 
-To stop syncing, open **Settings → Sync → Stop syncing**. For Google Drive, this also removes Balimda's access to your Google account. You can remove the stored sync data at any time: in Google Drive, go to **Settings → Manage apps → Balimda → Delete hidden app data**, or delete your GitHub repository.
+To stop syncing, open **Settings → Sync → Stop syncing**. For Google Drive, this also removes Najwa AI's access to your Google account. You can remove the stored sync data at any time: in Google Drive, go to **Settings → Manage apps → Najwa AI → Delete hidden app data**, or delete your GitHub repository.
 
 ## Contact
 

@@ -1,6 +1,6 @@
-// Balimda — © 2026 Bandar Altariqi. All rights reserved.
-// Licensed under the Balimda License (see LICENSE): non-commercial use only;
-// keep the Balimda name and the "Balimda by Bandar Altariqi" credit; no rebranding.
+// Najwa AI — © 2026 Bandar Altariqi. All rights reserved.
+// Licensed under the Najwa AI License (see LICENSE): non-commercial use only;
+// keep the Najwa AI name and the "Najwa AI by Bandar Altariqi" credit; no rebranding.
 
 // The computer's side of "use my computer's models" (see remote.js): a small
 // HTTP server on the local network that only answers requests encrypted with
@@ -116,7 +116,7 @@ function startRemoteServer({ getKey, handlers, port = PORT, host = '0.0.0.0', he
           // Picking up a reply this computer no longer has (it was restarted,
           // or no one came back for it in time).
           const write = open(res, key, msg.nonce);
-          await write({ t: 'error', code: 'gone', message: 'The computer no longer has this reply (Balimda was restarted, or the connection was lost for too long).' });
+          await write({ t: 'error', code: 'gone', message: 'The computer no longer has this reply (Najwa AI was restarted, or the connection was lost for too long).' });
           res.end();
           return;
         }

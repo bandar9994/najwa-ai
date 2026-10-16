@@ -1,8 +1,8 @@
-// Balimda — © 2026 Bandar Altariqi. All rights reserved.
-// Licensed under the Balimda License (see LICENSE): non-commercial use only;
-// keep the Balimda name and the "Balimda by Bandar Altariqi" credit; no rebranding.
+// Najwa AI — © 2026 Bandar Altariqi. All rights reserved.
+// Licensed under the Najwa AI License (see LICENSE): non-commercial use only;
+// keep the Najwa AI name and the "Najwa AI by Bandar Altariqi" credit; no rebranding.
 
-// Draws the Balimda icon (chat bubble with a diamond on an indigo gradient) and
+// Draws the Najwa AI icon (chat bubble with a diamond on an indigo gradient) and
 // writes the desktop icon, the website logos, and Android launcher icons and
 // splash screens.
 // Pure Node, no image libraries needed.

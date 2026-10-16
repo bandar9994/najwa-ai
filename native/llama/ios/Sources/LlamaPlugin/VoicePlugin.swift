@@ -1,6 +1,6 @@
-// Balimda — © 2026 Bandar Altariqi. All rights reserved.
-// Licensed under the Balimda License (see LICENSE): non-commercial use only;
-// keep the Balimda name and the "Balimda by Bandar Altariqi" credit; no rebranding.
+// Najwa AI — © 2026 Bandar Altariqi. All rights reserved.
+// Licensed under the Najwa AI License (see LICENSE): non-commercial use only;
+// keep the Najwa AI name and the "Najwa AI by Bandar Altariqi" credit; no rebranding.
 
 import AVFoundation
 import Capacitor
@@ -66,13 +66,13 @@ public class VoicePlugin: CAPPlugin, CAPBridgedPlugin, AVSpeechSynthesizerDelega
     @objc func listen(_ call: CAPPluginCall) {
         SFSpeechRecognizer.requestAuthorization { status in
             guard status == .authorized else {
-                call.reject("Balimda needs permission to recognise speech. Allow it in the iPhone's Settings → Balimda → Speech Recognition.", "speech-denied")
+                call.reject("Najwa AI needs permission to recognise speech. Allow it in the iPhone's Settings → Najwa AI → Speech Recognition.", "speech-denied")
                 return
             }
             AVAudioSession.sharedInstance().requestRecordPermission { granted in
                 DispatchQueue.main.async {
                     guard granted else {
-                        call.reject("Balimda needs the microphone to hear you. Allow it in the iPhone's Settings → Balimda → Microphone.", "mic-denied")
+                        call.reject("Najwa AI needs the microphone to hear you. Allow it in the iPhone's Settings → Najwa AI → Microphone.", "mic-denied")
                         return
                     }
                     self.startListening(call)

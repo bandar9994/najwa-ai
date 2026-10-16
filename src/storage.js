@@ -1,6 +1,6 @@
-// Balimda — © 2026 Bandar Altariqi. All rights reserved.
-// Licensed under the Balimda License (see LICENSE): non-commercial use only;
-// keep the Balimda name and the "Balimda by Bandar Altariqi" credit; no rebranding.
+// Najwa AI — © 2026 Bandar Altariqi. All rights reserved.
+// Licensed under the Najwa AI License (see LICENSE): non-commercial use only;
+// keep the Najwa AI name and the "Najwa AI by Bandar Altariqi" credit; no rebranding.
 
 // Persistent storage for chats, settings and app state.
 // Everything is plain JSON files so it is easy to back up, sync or inspect.
@@ -40,7 +40,7 @@ const DEFAULT_SETTINGS = {
     ollama: { enabled: true, baseUrl: 'http://127.0.0.1:11434', think: true },
     openaiCompatible: { enabled: true, baseUrl: 'http://127.0.0.1:1234/v1', apiKey: '' },
     // Hermes Agent's API server (off until the user sets it up). Hermes keeps
-    // its own memory, so Balimda's isn't sent unless shareMemory is on.
+    // its own memory, so Najwa AI's isn't sent unless shareMemory is on.
     hermes: { enabled: false, baseUrl: 'http://127.0.0.1:8642/v1', apiKey: '', shareMemory: false },
     anthropic: { enabled: true, apiKey: '' },
     openai: { enabled: true, baseUrl: 'https://api.openai.com/v1', apiKey: '' }
@@ -482,7 +482,7 @@ class Storage {
   // with it (as sync does), so messages added since the backup are kept.
   async importAll(data) {
     const chats = Array.isArray(data) ? data : data && data.chats;
-    if (!Array.isArray(chats)) throw new Error('This is not a Balimda backup file');
+    if (!Array.isArray(chats)) throw new Error('This is not a Najwa AI backup file');
     const { mergeChats } = require('./sync');
     let imported = 0;
     for (const chat of chats) {

@@ -1,6 +1,6 @@
-// Balimda — © 2026 Bandar Altariqi. All rights reserved.
-// Licensed under the Balimda License (see LICENSE): non-commercial use only;
-// keep the Balimda name and the "Balimda by Bandar Altariqi" credit; no rebranding.
+// Najwa AI — © 2026 Bandar Altariqi. All rights reserved.
+// Licensed under the Najwa AI License (see LICENSE): non-commercial use only;
+// keep the Najwa AI name and the "Najwa AI by Bandar Altariqi" credit; no rebranding.
 
 // Model providers. Every provider exposes:
 //   listModels(config)                          -> Promise<string[]>
@@ -296,7 +296,7 @@ function openaiLike({ sendSampling }) {
 // Hermes' API server speaks OpenAI Chat Completions, plus its own SSE events:
 // `hermes.tool.progress` (a tool started or finished), `approval.request`
 // (it wants permission to run something risky) and `hermes.status`. The
-// agent runs tools on its own machine; Balimda shows what it does and passes
+// agent runs tools on its own machine; Najwa AI shows what it does and passes
 // the user's approval decisions back.
 
 // Server-sent events as { event, data } (comment lines like ": keepalive" skipped).

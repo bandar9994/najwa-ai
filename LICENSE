@@ -1,11 +1,14 @@
-Balimda License
-Version 1.1
+Najwa AI License
+Version 1.2
 
 Copyright (c) 2026 Bandar Altariqi (https://github.com/bandar9994). All rights reserved.
 
-"Balimda" (the name, the logo and the app icon) is the brand of Bandar Altariqi.
+"Najwa AI" (the name, the logo and the app icon) is the brand of Bandar Altariqi.
+Najwa AI was earlier called "Balimda"; that name is also the brand of Bandar
+Altariqi, and everything in this license about the name "Najwa AI" applies
+to it as well.
 
-This license applies to the Balimda software: its source code, the apps
+This license applies to the Najwa AI software: its source code, the apps
 built from it, and its documentation (together, "the Software"). By using,
 copying, changing or sharing the Software you agree to these terms.
 
@@ -27,24 +30,24 @@ copying, changing or sharing the Software you agree to these terms.
    project built from the Software must:
    a) keep this LICENSE file, and all copyright and license notices in
       the source files, exactly as they are;
-   b) clearly show "Balimda by Bandar Altariqi" and a link to
-      https://github.com/bandar9994/balimda in the app's About or credits
+   b) clearly show "Najwa AI by Bandar Altariqi" and a link to
+      https://github.com/bandar9994/najwa-ai in the app's About or credits
       screen, and in the README, description or store listing of the
       project; and
    c) if you changed the Software, say so clearly (for example
-      "Based on Balimda by Bandar Altariqi, modified by <your name>"), so nobody
+      "Based on Najwa AI by Bandar Altariqi, modified by <your name>"), so nobody
       thinks your changes were made by the author.
 
 
 3. No rebranding
 
-   a) Any copy or changed version must keep the name "Balimda" and the
-      Balimda logo and icon. You may not rename it, remove the brand, or
+   a) Any copy or changed version must keep the name "Najwa AI" and the
+      Najwa AI logo and icon. You may not rename it, remove the brand, or
       publish it under another name, logo or author.
-   b) You may not remove, hide or change the "Balimda by Bandar Altariqi" credit
+   b) You may not remove, hide or change the "Najwa AI by Bandar Altariqi" credit
       or the About screen, or suggest that anyone other than Bandar Altariqi
-      created Balimda.
-   c) You may not use the Balimda name or logo for any other product,
+      created Najwa AI.
+   c) You may not use the Najwa AI name or logo for any other product,
       or in a way that suggests Bandar Altariqi endorses your version, without
       Bandar Altariqi's written permission.
 
@@ -67,16 +70,16 @@ copying, changing or sharing the Software you agree to these terms.
       that earns money for anyone other than Bandar Altariqi.
    Companies and organisations can ask Bandar Altariqi for a quote for a
    commercial license at:
-   https://github.com/bandar9994/balimda/issues/new?template=commercial-license.yml
+   https://github.com/bandar9994/najwa-ai/issues/new?template=commercial-license.yml
 
 
 5. Other software included
 
-   Balimda includes and uses software made by others (for example
+   Najwa AI includes and uses software made by others (for example
    llama.cpp, wllama, Electron, Capacitor, marked and DOMPurify). Those
    parts remain under their own licenses; see THIRD-PARTY-NOTICES.md.
    Nothing in this license limits the rights those licenses give you
-   for those parts. AI models that you download inside Balimda belong
+   for those parts. AI models that you download inside Najwa AI belong
    to their creators and are covered by their own licenses.
 
 

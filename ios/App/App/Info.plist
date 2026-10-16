@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-        <string>Balimda</string>
+        <string>Najwa AI</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -51,7 +51,7 @@
 	<array>
 		<string>arm64</string>
 	</array>
-	<!-- The models on the user's own computer (Balimda desktop, Ollama, LM
+	<!-- The models on the user's own computer (Najwa AI desktop, Ollama, LM
 	     Studio, Hermes Agent) are reached over plain http on the local network
 	     or Tailscale; everything else is https. -->
 	<key>NSAppTransportSecurity</key>
@@ -62,11 +62,11 @@
 		<true/>
 	</dict>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Balimda listens when you tap the microphone, so you can talk to your AI instead of typing.</string>
+	<string>Najwa AI listens when you tap the microphone, so you can talk to your AI instead of typing.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>Balimda turns what you say into text for your chat. With "Private voice" on, this happens only on your iPhone.</string>
+	<string>Najwa AI turns what you say into text for your chat. With "Private voice" on, this happens only on your iPhone.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Balimda connects to the AI models on your own computer (the Balimda desktop app, Ollama, LM Studio or Hermes Agent) over your Wi-Fi.</string>
+	<string>Najwa AI connects to the AI models on your own computer (the Najwa AI desktop app, Ollama, LM Studio or Hermes Agent) over your Wi-Fi.</string>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
