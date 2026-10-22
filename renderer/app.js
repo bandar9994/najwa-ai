@@ -787,6 +787,9 @@ function agentEvent(chat, msg, evt) {
     if (S.current !== chat || document.hidden) toast('Hermes is asking for permission. Open the chat to answer.', 5000);
   } else if (evt.kind === 'status') {
     msg.agentStatus = String(evt.text).slice(0, 200);
+  } else if (evt.kind === 'replace' && typeof evt.text === 'string') {
+    // Part of the reply was missed (the connection dropped for a long time): the finished answer.
+    msg.content = evt.text;
   }
   scheduleMessageRender(chat, msg);
   saveChatSoon(chat, S.info.mobile ? 5000 : 1500);

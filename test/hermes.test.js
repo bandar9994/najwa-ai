@@ -283,3 +283,164 @@ test('Phone network code: an answer that arrives before request() returns, Stop,
     if (h.server.listening) h.server.close();
   }
 });
+
+// Plays Hermes' runs API (gateway/platforms/api_server_runs.py): numbered
+// events, replayed after Last-Event-ID, and a pollable status once the run's
+// live events are gone.
+function fakeHermesRuns({ script = 'drop' } = {}) {
+  const seen = { posts: [], lastIds: [], stops: 0, approvals: [] };
+  const run = { status: 'running', output: 'Freed 2.4 GB.' };
+  const events = [
+    { event: 'reasoning.available', text: 'Look for caches.' },
+    { event: 'tool.started', tool: 'terminal', preview: 'du -sh ~/Projects', tool_call_id: 'c1' },
+    { event: 'tool.completed', tool: 'terminal', tool_call_id: 'c1', error: false },
+    { event: 'message.delta', delta: 'Freed ' },
+    { event: 'approval.request', run_id: 'run_1', request_id: 'a1', command: 'rm -rf old/', description: 'delete', choices: ['once', 'deny'] },
+    { event: 'message.delta', delta: '2.4 GB.' },
+    { event: 'run.completed', output: 'Freed 2.4 GB.' }
+  ].map((e, seq) => ({ ...e, run_id: 'run_1', seq }));
+  let connections = 0;
+  const server = http.createServer((req, res) => {
+    if (req.headers.authorization !== `Bearer ${KEY}`) {
+      res.writeHead(401);
+      return res.end();
+    }
+    let body = '';
+    req.on('data', (c) => { body += c; });
+    req.on('end', async () => {
+      const send = (status, data) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(data)); };
+      if (req.method === 'POST' && req.url === '/v1/runs') {
+        seen.posts.push({ body: JSON.parse(body), idempotency: req.headers['idempotency-key'] });
+        return send(202, { run_id: 'run_1', status: 'started' });
+      }
+      if (req.url === '/v1/runs/run_1/stop') {
+        seen.stops++;
+        run.status = 'cancelled';
+        return send(200, { status: 'stopping' });
+      }
+      if (req.url === '/v1/runs/run_1/approval') {
+        seen.approvals.push(JSON.parse(body));
+        return send(200, { ok: true });
+      }
+      if (req.url === '/v1/runs/run_1') return send(200, { object: 'hermes.run', run_id: 'run_1', ...run });
+      if (req.url !== '/v1/runs/run_1/events') return send(404, { error: { message: 'not found' } });
+      connections++;
+      seen.lastIds.push(req.headers['last-event-id'] ?? null);
+      if (script === 'gone' && connections > 1) {
+        // Finished while away, and its live events are gone: the status has the answer.
+        run.status = 'completed';
+        return send(404, { error: { message: 'Run not found' } });
+      }
+      if (script === 'truncated' && connections > 1) {
+        // Too much happened while away: Hermes can't replay it all.
+        res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+        res.write(`data: ${JSON.stringify({ event: 'replay.truncated', run_id: 'run_1', oldest_retained_seq: 900 })}\n\n`);
+        res.write(`id: 950\ndata: ${JSON.stringify({ event: 'run.completed', run_id: 'run_1', seq: 950, output: 'Removed old caches: 2.4 GB.' })}\n\n`);
+        return res.end(': stream closed\n\n');
+      }
+      if (script === 'failed') {
+        res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+        res.write(`id: 0\ndata: ${JSON.stringify({ event: 'run.failed', run_id: 'run_1', seq: 0, error: 'Model provider error' })}\n\n`);
+        return res.end(': stream closed\n\n');
+      }
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+      res.write(': open\n\n');
+      const from = Number(req.headers['last-event-id'] ?? -1) + 1;
+      for (const e of events.slice(from)) {
+        // The first time, the connection drops in the middle (the phone left the app).
+        if (connections === 1 && e.seq === 4 && script !== 'stop') {
+          await sleep(20);
+          return res.destroy();
+        }
+        if (script === 'stop' && e.seq === 4) return; // waits until stopped
+        if (script === 'gone' && e.seq === 4) return res.destroy();
+        res.write(`id: ${e.seq}\ndata: ${JSON.stringify(e)}\n\n`);
+        await sleep(5);
+      }
+      res.end(': stream closed\n\n');
+    });
+  });
+  return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve({ server, seen, url: `http://127.0.0.1:${server.address().port}/v1` })));
+}
+
+test('Hermes runs: a dropped connection reconnects and picks up where it left off', async () => {
+  const h = await fakeHermesRuns();
+  try {
+    const cfg = { baseUrl: h.url, apiKey: KEY };
+    const infos = [];
+    let text = '';
+    const result = await hermes.streamChat(cfg, {
+      model: 'hermes-agent', system: 'Be brief.',
+      messages: [{ role: 'user', content: 'Hi' }, { role: 'assistant', content: 'Hello!' }, { role: 'user', content: 'Clean my disk' }]
+    }, (piece) => { text += piece; }, undefined, (info) => infos.push(info));
+    assert.strictEqual(text, '<think>Look for caches.</think>\n\nFreed 2.4 GB.');
+    assert.strictEqual(result.text, text);
+    // Reconnected once, after the last event it had (3).
+    assert.deepStrictEqual(h.seen.lastIds, [null, '3']);
+    assert.deepStrictEqual(infos.map((i) => `${i.kind}:${i.status || i.command || i.text}`), [
+      'tool:running', 'tool:completed', 'status:Reconnecting to Hermes…', 'status:', 'approval:rm -rf old/'
+    ]);
+    assert.strictEqual(infos.find((i) => i.kind === 'approval').approvalId, 'a1');
+    // The chat went as a run: the new message, the earlier ones, and the instructions.
+    const post = h.seen.posts[0];
+    assert.deepStrictEqual(post.body, {
+      model: 'hermes-agent', input: 'Clean my disk', instructions: 'Be brief.',
+      conversation_history: [{ role: 'user', content: 'Hi' }, { role: 'assistant', content: 'Hello!' }]
+    });
+    assert.ok(post.idempotency);
+  } finally {
+    h.server.close();
+  }
+});
+
+test('Hermes runs: finished while away (status only), failed, and Stop', async () => {
+  let h = await fakeHermesRuns({ script: 'gone' });
+  try {
+    let text = '';
+    await hermes.streamChat({ baseUrl: h.url, apiKey: KEY }, { model: 'hermes-agent', messages: [{ role: 'user', content: 'Clean' }] },
+      (piece) => { text += piece; });
+    // It had "Freed " live; the rest comes from the finished run's status.
+    assert.strictEqual(text, '<think>Look for caches.</think>\n\nFreed 2.4 GB.');
+  } catch (err) {
+    assert.fail(err);
+  } finally {
+    h.server.close();
+  }
+
+  h = await fakeHermesRuns({ script: 'truncated' });
+  try {
+    const infos = [];
+    const result = await hermes.streamChat({ baseUrl: h.url, apiKey: KEY }, { model: 'hermes-agent', messages: [{ role: 'user', content: 'Clean' }] },
+      () => {}, undefined, (info) => infos.push(info));
+    // Some of the reply was missed: the app gets the finished answer instead.
+    const replaced = infos.find((i) => i.kind === 'replace');
+    assert.strictEqual(replaced.text, '<think>Look for caches.</think>\n\nRemoved old caches: 2.4 GB.');
+    assert.strictEqual(result.text, replaced.text);
+  } finally {
+    h.server.close();
+  }
+
+  h = await fakeHermesRuns({ script: 'failed' });
+  try {
+    await assert.rejects(hermes.streamChat({ baseUrl: h.url, apiKey: KEY }, { model: 'hermes-agent', messages: [{ role: 'user', content: 'hi' }] }, () => {}),
+      /Hermes couldn't finish: Model provider error/);
+  } finally {
+    h.server.close();
+  }
+
+  h = await fakeHermesRuns({ script: 'stop' });
+  try {
+    const controller = new AbortController();
+    let text = '';
+    const done = hermes.streamChat({ baseUrl: h.url, apiKey: KEY }, { model: 'hermes-agent', messages: [{ role: 'user', content: 'Clean' }] },
+      (piece) => {
+        text += piece;
+        if (text.includes('Freed')) controller.abort();
+      }, controller.signal);
+    await assert.rejects(done, { name: 'AbortError' });
+    await sleep(50);
+    assert.strictEqual(h.seen.stops, 1);
+  } finally {
+    h.server.close();
+  }
+});

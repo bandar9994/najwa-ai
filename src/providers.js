@@ -293,11 +293,16 @@ function openaiLike({ sendSampling }) {
 }
 
 // ---- Hermes Agent (Nous Research) ---------------------------------------------
-// Hermes' API server speaks OpenAI Chat Completions, plus its own SSE events:
-// `hermes.tool.progress` (a tool started or finished), `approval.request`
-// (it wants permission to run something risky) and `hermes.status`. The
-// agent runs tools on its own machine; Najwa AI shows what it does and passes
-// the user's approval decisions back.
+// Hermes runs the agent on its own machine; Najwa AI shows what it does and
+// passes the user's approval decisions back. Two ways to talk to it:
+//
+// - Runs (POST /v1/runs, then GET /v1/runs/{id}/events): the agent keeps
+//   working if the connection drops (an iPhone cuts it as soon as you leave
+//   the app), and the app reconnects and picks up where it left off: each
+//   event has a number, and Hermes replays the ones after the last one seen.
+// - Chat Completions (/v1/chat/completions), for Hermes versions without
+//   runs. Its SSE stream has Hermes' own events too: `hermes.tool.progress`,
+//   `approval.request` and `hermes.status`. A dropped connection loses the reply.
 
 // Server-sent events as { event, data } (comment lines like ": keepalive" skipped).
 async function* readSse(body) {
@@ -330,20 +335,212 @@ async function hermesError(res) {
   return httpError(res);
 }
 
+// The reply as it's written: reasoning in a <think> block, then the answer.
+function replyWriter(onDelta) {
+  const w = { text: '', thinking: false, answered: false, answerAt: 0 };
+  const out = (piece) => {
+    w.text += piece;
+    onDelta(piece);
+  };
+  w.reasoning = (piece) => {
+    if (!piece || w.answered) return;
+    if (!w.thinking) out('<think>');
+    w.thinking = true;
+    out(piece);
+  };
+  w.answer = (piece) => {
+    if (!piece) return;
+    if (w.thinking) out('</think>\n\n');
+    w.thinking = false;
+    if (!w.answered) w.answerAt = w.text.length;
+    w.answered = true;
+    out(piece);
+  };
+  w.close = () => {
+    if (w.thinking) out('</think>');
+    w.thinking = false;
+  };
+  return w;
+}
+
+// How long to wait before each try at reconnecting to a run (then give up).
+// Reset whenever the run is reached again. On a phone, waiting stops while
+// the app is in the background, so these are counted while it's open.
+const RUN_RECONNECT_MS = [500, 1000, 2000, 4000, 8000, 15000, 15000, 15000];
+const RUN_FINISHED = new Set(['completed', 'failed', 'cancelled', 'interrupted']);
+
+const abortError = () => {
+  const err = new Error('The operation was aborted.');
+  err.name = 'AbortError';
+  return err;
+};
+
+const wait = (ms, signal) => new Promise((resolve, reject) => {
+  if (signal && signal.aborted) return reject(abortError());
+  const done = () => {
+    clearTimeout(timer);
+    if (signal) signal.removeEventListener('abort', stop);
+  };
+  const stop = () => {
+    done();
+    reject(abortError());
+  };
+  const timer = setTimeout(() => {
+    done();
+    resolve();
+  }, ms);
+  if (signal) signal.addEventListener('abort', stop);
+});
+
+// A dropped or refused connection (worth trying again), not an answer from Hermes.
+const isNetworkError = (err) => err instanceof TypeError || (err && err.cause instanceof TypeError);
+
 // `doFetch` is the phone's own network code in the mobile app (see
 // src/native-fetch.js): Hermes only answers web pages from origins it lists,
 // and the app's web view always sends one.
-const hermesProvider = (doFetch = (...args) => fetch(...args)) => ({
-  async listModels(cfg) {
-    const res = await doFetch(`${trimSlash(cfg.baseUrl)}/models`, { headers: hermesHeaders(cfg) });
+const hermesProvider = (doFetch = (...args) => fetch(...args)) => {
+  // Starts a run; null if this Hermes has no runs (an older version).
+  async function startRun(cfg, req, signal) {
+    const messages = textOnly(req.messages).map((m) => ({ role: m.role, content: String(m.content || '') }));
+    const last = messages[messages.length - 1];
+    const body = { model: req.model, input: last ? last.content : '', conversation_history: messages.slice(0, -1) };
+    if (req.system) body.instructions = req.system;
+    const res = await doFetch(`${trimSlash(cfg.baseUrl)}/runs`, {
+      method: 'POST',
+      // Sending it twice (after a dropped connection) starts it only once.
+      headers: { ...hermesHeaders(cfg), 'Idempotency-Key': globalThis.crypto.randomUUID() },
+      body: JSON.stringify(body),
+      signal
+    });
+    if (res.status === 404 || res.status === 405) return null;
     if (!res.ok) throw await hermesError(res);
     const data = await res.json();
-    const ids = (data.data || []).map((m) => m.id);
-    return ids.length ? ids.sort() : ['hermes-agent'];
-  },
+    if (!data.run_id) throw new Error('Hermes didn\'t start the run.');
+    return data.run_id;
+  }
 
-  // onInfo receives { kind: 'tool' | 'approval' | 'status', ... } as the agent works.
-  async streamChat(cfg, req, onDelta, signal, onInfo = () => {}) {
+  // Follows a run's events until it finishes, reconnecting when the
+  // connection drops. Resolves with { output, missed } (missed: some of the
+  // reply may not have arrived) or throws.
+  async function followRun(cfg, runId, w, signal, onInfo) {
+    const base = `${trimSlash(cfg.baseUrl)}/runs/${encodeURIComponent(runId)}`;
+    const headers = { ...hermesHeaders(cfg), Accept: 'text/event-stream' };
+    delete headers['Content-Type'];
+    let lastSeq = -1;
+    let missed = false;
+    let tries = 0;
+
+    // The finished run, from its status (after its live events are gone).
+    const fromStatus = async () => {
+      const res = await doFetch(base, { headers, signal });
+      if (res.status === 404) throw new Error('Hermes no longer has this run (was it restarted?). Ask again to get an answer.');
+      if (!res.ok) throw await hermesError(res);
+      const st = await res.json();
+      if (!RUN_FINISHED.has(st.status)) return null;
+      missed = true;
+      return { event: `run.${st.status}`, ...st };
+    };
+
+    const handle = (evt) => {
+      switch (evt.event) {
+        case 'message.delta':
+          w.answer(evt.delta);
+          return null;
+        case 'message.interim':
+          // Text the agent wrote beside its tool calls, if it wasn't streamed already.
+          if (!evt.already_streamed && evt.text) w.answer(`${evt.text}\n\n`);
+          return null;
+        case 'reasoning.available':
+          if (evt.text) w.reasoning(w.thinking ? `\n\n${evt.text}` : evt.text);
+          return null;
+        case 'tool.started':
+          onInfo({ kind: 'tool', id: evt.tool_call_id, tool: evt.tool, emoji: '', label: evt.preview || evt.tool, status: 'running' });
+          return null;
+        case 'tool.completed':
+          onInfo({ kind: 'tool', id: evt.tool_call_id, tool: evt.tool, label: evt.tool, status: 'completed' });
+          return null;
+        case 'approval.request':
+          onInfo({
+            kind: 'approval',
+            runId: evt.run_id || runId,
+            approvalId: evt.request_id || null,
+            command: evt.command || '',
+            description: evt.description || '',
+            choices: Array.isArray(evt.choices) && evt.choices.length ? evt.choices : ['once', 'deny']
+          });
+          return null;
+        case 'run.queued':
+          onInfo({ kind: 'status', text: String(evt.message || 'Waiting for Hermes to start…') });
+          return null;
+        case 'replay.truncated':
+          // Too much happened while away to replay it all: the finished
+          // answer comes with the run's end.
+          missed = true;
+          return null;
+        default:
+          return evt.event && evt.event.startsWith('run.') && RUN_FINISHED.has(evt.event.slice(4)) ? evt : null;
+      }
+    };
+
+    const stop = () => {
+      doFetch(`${base}/stop`, { method: 'POST', headers: hermesHeaders(cfg), body: '{}' }).catch(() => {});
+    };
+    if (signal && signal.aborted) {
+      stop();
+      throw abortError();
+    }
+    if (signal) signal.addEventListener('abort', stop);
+    try {
+      let end = null;
+      while (!end) {
+        if (signal && signal.aborted) throw abortError();
+        try {
+          const res = await doFetch(`${base}/events`, {
+            headers: lastSeq >= 0 ? { ...headers, 'Last-Event-ID': String(lastSeq) } : headers,
+            signal
+          });
+          if (res.status === 404) {
+            end = await fromStatus();
+            if (!end) throw new Error('Hermes stopped sending this run\'s progress.');
+            break;
+          }
+          if (!res.ok) throw await hermesError(res);
+          if (tries) onInfo({ kind: 'status', text: '' });
+          tries = 0;
+          for await (const { data } of readSse(res.body)) {
+            let evt;
+            try {
+              evt = JSON.parse(data);
+            } catch {
+              continue;
+            }
+            if (Number.isInteger(evt.seq)) lastSeq = evt.seq;
+            end = handle(evt);
+            if (end) break;
+          }
+          // The stream ended without the run's end: it may have finished
+          // meanwhile, otherwise reconnect.
+          if (!end) end = await fromStatus();
+          if (!end) await wait(RUN_RECONNECT_MS[0], signal);
+        } catch (err) {
+          if ((signal && signal.aborted) || !isNetworkError(err) || tries >= RUN_RECONNECT_MS.length) throw err;
+          onInfo({ kind: 'status', text: 'Reconnecting to Hermes…' });
+          await wait(RUN_RECONNECT_MS[tries++], signal);
+        }
+      }
+      if (end.event === 'run.completed') return { output: typeof end.output === 'string' ? end.output : '', missed };
+      if (end.event === 'run.cancelled') {
+        if (signal && signal.aborted) throw abortError();
+        throw new Error('Hermes stopped this run before it finished.');
+      }
+      throw new Error(end.error ? `Hermes couldn't finish: ${end.error}` : 'Hermes couldn\'t finish this run. Check the Hermes gateway\'s log for details.');
+    } finally {
+      if (signal) signal.removeEventListener('abort', stop);
+    }
+  }
+
+  // Older Hermes: the whole run in one Chat Completions stream.
+  async function chatCompletions(cfg, req, w, signal, onInfo) {
     const res = await doFetch(`${trimSlash(cfg.baseUrl)}/chat/completions`, {
       method: 'POST',
       headers: hermesHeaders(cfg),
@@ -351,14 +548,7 @@ const hermesProvider = (doFetch = (...args) => fetch(...args)) => ({
       signal
     });
     if (!res.ok) throw await hermesError(res);
-    let text = '';
-    let thinking = false;
-    let answered = false;
     let stopReason = 'end_turn';
-    const out = (piece) => {
-      text += piece;
-      onDelta(piece);
-    };
     for await (const { event, data } of readSse(res.body)) {
       if (data === '[DONE]') break;
       let evt;
@@ -390,41 +580,65 @@ const hermesProvider = (doFetch = (...args) => fetch(...args)) => ({
       if (evt.error) throw new Error(evt.error.message || JSON.stringify(evt.error));
       const choice = evt.choices && evt.choices[0];
       const delta = (choice && choice.delta) || {};
-      // Reasoning goes in a <think> block, like other thinking models.
-      if (delta.reasoning_content && !answered) {
-        if (!thinking) out('<think>');
-        thinking = true;
-        out(delta.reasoning_content);
-      }
-      if (delta.content) {
-        if (thinking) out('</think>\n\n');
-        thinking = false;
-        answered = true;
-        out(delta.content);
-      }
+      w.reasoning(delta.reasoning_content);
+      w.answer(delta.content);
       if (choice && choice.finish_reason) {
         if (choice.finish_reason === 'length') stopReason = 'max_tokens';
         else if (choice.finish_reason !== 'stop') stopReason = choice.finish_reason;
       }
     }
-    if (thinking) out('</think>');
-    if (stopReason !== 'end_turn' && stopReason !== 'max_tokens' && !answered) {
+    w.close();
+    if (stopReason !== 'end_turn' && stopReason !== 'max_tokens' && !w.answered) {
       throw new Error(`Hermes stopped before answering (${stopReason}). Check the Hermes gateway's log for details.`);
     }
-    return { text, stopReason };
-  },
-
-  // choice: 'once' | 'session' | 'always' | 'deny'
-  async approve(cfg, { runId, choice, approvalId }) {
-    const res = await doFetch(`${trimSlash(cfg.baseUrl)}/runs/${encodeURIComponent(runId)}/approval`, {
-      method: 'POST',
-      headers: hermesHeaders(cfg),
-      body: JSON.stringify(approvalId ? { choice, request_id: approvalId } : { choice })
-    });
-    if (!res.ok) throw await hermesError(res);
-    return true;
+    return stopReason;
   }
-});
+
+  return {
+    async listModels(cfg) {
+      const res = await doFetch(`${trimSlash(cfg.baseUrl)}/models`, { headers: hermesHeaders(cfg) });
+      if (!res.ok) throw await hermesError(res);
+      const data = await res.json();
+      const ids = (data.data || []).map((m) => m.id);
+      return ids.length ? ids.sort() : ['hermes-agent'];
+    },
+
+    // onInfo receives { kind: 'tool' | 'approval' | 'status' | 'replace', ... } as the agent works.
+    async streamChat(cfg, req, onDelta, signal, onInfo = () => {}) {
+      const w = replyWriter(onDelta);
+      const runId = await startRun(cfg, req, signal);
+      if (!runId) {
+        const stopReason = await chatCompletions(cfg, req, w, signal, onInfo);
+        return { text: w.text, stopReason };
+      }
+      const { output, missed } = await followRun(cfg, runId, w, signal, onInfo);
+      const answer = w.answered ? w.text.slice(w.answerAt) : '';
+      if (output && (!w.answered || (missed && output !== answer))) {
+        if (output.startsWith(answer)) {
+          w.answer(output.slice(answer.length));
+        } else {
+          // Part of the reply was missed while away: use the finished answer.
+          w.close();
+          w.text = w.text.slice(0, w.answerAt) + output;
+          onInfo({ kind: 'replace', text: w.text });
+        }
+      }
+      w.close();
+      return { text: w.text, stopReason: 'end_turn' };
+    },
+
+    // choice: 'once' | 'session' | 'always' | 'deny'
+    async approve(cfg, { runId, choice, approvalId }) {
+      const res = await doFetch(`${trimSlash(cfg.baseUrl)}/runs/${encodeURIComponent(runId)}/approval`, {
+        method: 'POST',
+        headers: hermesHeaders(cfg),
+        body: JSON.stringify(approvalId ? { choice, request_id: approvalId } : { choice })
+      });
+      if (!res.ok) throw await hermesError(res);
+      return true;
+    }
+  };
+};
 
 // ---- Anthropic (Claude) ----------------------------------------------------
 
