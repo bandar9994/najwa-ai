@@ -4,6 +4,7 @@
 
 import Capacitor
 import Foundation
+import UIKit
 
 /**
  * Requests made with the iPhone's own network code instead of the web view,
@@ -14,6 +15,11 @@ import Foundation
  * request({id, url, method, headers, body}) resolves with {status, headers}
  * when the answer starts; "net" events then bring {id, data} (base64) and
  * finally {id, done: true} or {id, error}. cancel({id}) stops a request.
+ *
+ * iOS cuts an app's connections soon after you leave it. While a request is
+ * running, the app asks for the extra time iOS allows (about 30 seconds), so a
+ * reply that's nearly done can finish; for longer ones the JavaScript side
+ * reconnects when you come back (Hermes keeps working meanwhile).
  */
 @objc(NetPlugin)
 public class NetPlugin: CAPPlugin, CAPBridgedPlugin, URLSessionDataDelegate {
@@ -38,6 +44,7 @@ public class NetPlugin: CAPPlugin, CAPBridgedPlugin, URLSessionDataDelegate {
     }()
     private var running: [Int: Running] = [:]      // task id -> request
     private var tasks: [String: URLSessionDataTask] = [:]
+    private var backgroundTime: UIBackgroundTaskIdentifier = .invalid  // only touched on the main thread
 
     private lazy var session: URLSession = {
         let config = URLSessionConfiguration.default
@@ -68,6 +75,7 @@ public class NetPlugin: CAPPlugin, CAPBridgedPlugin, URLSessionDataDelegate {
             let task = self.session.dataTask(with: request)
             self.running[task.taskIdentifier] = Running(id: id, call: call)
             self.tasks[id] = task
+            self.updateBackgroundTime()
             task.resume()
         }
     }
@@ -107,6 +115,7 @@ public class NetPlugin: CAPPlugin, CAPBridgedPlugin, URLSessionDataDelegate {
     public func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         guard let r = running.removeValue(forKey: task.taskIdentifier) else { return }
         tasks.removeValue(forKey: r.id)
+        updateBackgroundTime()
         let message = r.cancelled ? "Cancelled" : error.map { describe($0, task.originalRequest?.url) }
         if let call = r.call {
             call.reject(message ?? "The server closed the connection without answering.")
@@ -115,6 +124,26 @@ public class NetPlugin: CAPPlugin, CAPBridgedPlugin, URLSessionDataDelegate {
         } else {
             notifyListeners("net", data: ["id": r.id, "done": true])
         }
+    }
+
+    // Extra time in the background while any request is running (called on `queue`).
+    private func updateBackgroundTime() {
+        let busy = !running.isEmpty
+        DispatchQueue.main.async {
+            if busy && self.backgroundTime == .invalid {
+                self.backgroundTime = UIApplication.shared.beginBackgroundTask(withName: "Najwa AI reply") {
+                    self.endBackgroundTime()
+                }
+            } else if !busy {
+                self.endBackgroundTime()
+            }
+        }
+    }
+
+    private func endBackgroundTime() {
+        guard backgroundTime != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(backgroundTime)
+        backgroundTime = .invalid
     }
 
     // Says what went wrong in words a person can act on.
