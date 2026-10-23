@@ -20,6 +20,7 @@ const DEFAULT_SETTINGS = {
   sendOnEnter: true,
   replyStyle: 'sentences',  // how replies appear while written: 'sentences', 'words' or 'whole'
   readLinks: true,  // open links in the user's messages and give the model the page's text
+  browser: true,    // let models (that can use tools) search and browse the web
   temperature: 0.7,
   maxTokens: 0,
   historyLimit: 0,

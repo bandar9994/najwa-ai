@@ -91,6 +91,62 @@ function pageText(html) {
   return { title, description, text: out.join('\n').trim() };
 }
 
+// The links on a page, as { text, url } (absolute, http(s), no repeats).
+function pageLinks(html, base, max = 80) {
+  const out = [];
+  const seen = new Set();
+  for (const m of String(html || '').matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a\s*>/gi)) {
+    const href = attr(`<a ${m[1]}>`, 'href');
+    let url;
+    try {
+      url = new URL(href, base);
+    } catch {
+      continue;
+    }
+    if (!/^https?:$/.test(url.protocol)) continue;
+    url.hash = '';
+    const text = decodeEntities(m[2].replace(/<img\b[^>]*>/gi, (t) => attr(t, 'alt')).replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim().slice(0, 80);
+    if (!text || seen.has(url.href)) continue;
+    seen.add(url.href);
+    out.push({ text, url: url.href });
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+// DuckDuckGo's plain results page -> [{ title, url, snippet }].
+function searchResults(html, max = 8) {
+  const out = [];
+  const parts = String(html || '').split(/(?=<a\b[^>]*class="[^"]*\bresult__a\b)/i).slice(1);
+  for (const part of parts) {
+    const a = /^<a\b([^>]*)>([\s\S]*?)<\/a>/i.exec(part);
+    if (!a) continue;
+    let url = attr(`<a ${a[1]}>`, 'href');
+    try {
+      const u = new URL(url, 'https://duckduckgo.com/');
+      url = u.hostname.endsWith('duckduckgo.com') && u.searchParams.get('uddg') ? u.searchParams.get('uddg') : u.href;
+    } catch {
+      continue;
+    }
+    if (!/^https?:/.test(url) || /duckduckgo\.com\/y\.js/.test(url)) continue; // ads
+    const clean = (x) => decodeEntities(String(x || '').replace(/<[^>]+>/g, '')).replace(/\s+/g, ' ').trim();
+    const snippet = /class="[^"]*\bresult__snippet\b[^"]*"[^>]*>([\s\S]*?)<\/(?:a|div|td)>/i.exec(part);
+    out.push({ title: clean(a[2]), url, snippet: clean(snippet && snippet[1]) });
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+// Searches the web (DuckDuckGo's plain page: no account, no tracking).
+async function searchWeb(query, doFetch = (...args) => fetch(...args)) {
+  const page = await readLink(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`, doFetch, { raw: true });
+  const results = searchResults(page.html);
+  if (!results.length && /anomaly|captcha|unusual traffic/i.test(page.html)) {
+    throw new Error('DuckDuckGo wants to check this isn\'t a robot right now. Try again in a few minutes, or open a site directly.');
+  }
+  return results;
+}
+
 // Reads at most `max` bytes of a response body.
 async function readBody(res, max) {
   if (!res.body || !res.body.getReader) {
@@ -133,7 +189,7 @@ const siteOf = (url) => {
 
 // Opens a link and reads its text. Resolves with { url, title, description,
 // text, cut } or rejects with an Error that says what went wrong.
-async function readLink(url, doFetch = (...args) => fetch(...args), { timeoutMs = TIMEOUT_MS } = {}) {
+async function readLink(url, doFetch = (...args) => fetch(...args), { timeoutMs = TIMEOUT_MS, raw = false } = {}) {
   let parsed;
   try {
     parsed = new URL(url);
@@ -182,12 +238,17 @@ async function readLink(url, doFetch = (...args) => fetch(...args), { timeoutMs 
     } catch {
       body = new TextDecoder('utf-8').decode(bytes);
     }
+    if (raw) return { url: at, html: body };
     const page = html ? pageText(body) : { title: '', description: '', text: body.trim() };
     const long = page.text.length > MAX_CHARS;
-    return { url: parsed.href, title: page.title, description: page.description, text: long ? page.text.slice(0, MAX_CHARS) : page.text, cut: cut || long };
+    return {
+      url: parsed.href, title: page.title, description: page.description, text: long ? page.text.slice(0, MAX_CHARS) : page.text, cut: cut || long,
+      // Where the page ended up (after redirects), and its links (for the browser tools).
+      finalUrl: at, links: html ? pageLinks(body, at) : []
+    };
   } finally {
     clearTimeout(timer);
   }
 }
 
-module.exports = { findLinks, pageText, readLink, siteOf, MAX_LINKS };
+module.exports = { findLinks, pageText, pageLinks, readLink, searchResults, searchWeb, siteOf, MAX_LINKS };

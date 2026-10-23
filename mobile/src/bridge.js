@@ -14,6 +14,8 @@ import { Storage } from '../../src/storage.js';
 import { PROVIDERS, hermesProvider, normalizeMessages } from '../../src/providers.js';
 import { makeNativeFetch } from '../../src/native-fetch.js';
 import { readLink } from '../../src/link-reader.js';
+import { chatWithTools, TOOL_KINDS } from '../../src/tool-chat.js';
+import { textBrowser, browsingNote } from '../../src/browser-tools.js';
 import { Sync, SyncError } from '../../src/sync.js';
 import { remoteComputers } from '../../src/remote.js';
 import * as local from './on-device.js';
@@ -327,25 +329,32 @@ window.balimda = {
       const controller = new AbortController();
       active.set(req.requestId, controller);
       try {
-        const result = await provider.impl.streamChat(
-          cfg,
-          {
-            model: req.model,
-            system: req.system,
-            messages: normalizeMessages(req.messages),
-            temperature: req.temperature,
-            maxTokens: req.maxTokens,
-            think: req.think,
-            background: !!req.background
-          },
-          (text) => {
-            for (const cb of aiListeners) cb({ requestId: req.requestId, type: 'delta', text });
-          },
-          controller.signal,
-          (info) => {
-            for (const cb of aiListeners) cb({ requestId: req.requestId, type: 'info', ...info });
-          }
-        );
+        const request = {
+          model: req.model,
+          system: req.system,
+          messages: normalizeMessages(req.messages),
+          temperature: req.temperature,
+          maxTokens: req.maxTokens,
+          think: req.think,
+          background: !!req.background,
+          // "Let models use a browser": a computer's models use its own browser.
+          browse: !!req.browse
+        };
+        const onDelta = (text) => {
+          for (const cb of aiListeners) cb({ requestId: req.requestId, type: 'delta', text });
+        };
+        const onInfo = (info) => {
+          for (const cb of aiListeners) cb({ requestId: req.requestId, type: 'info', ...info });
+        };
+        // The phone's own browser reads pages as text (it has no hidden browser).
+        if (req.browse && TOOL_KINDS[req.provider]) {
+          const result = await chatWithTools({
+            kind: TOOL_KINDS[req.provider], cfg, req: { ...request, system: browsingNote(request.system, false) },
+            onDelta, signal: controller.signal, onInfo, tools: textBrowser(nativeFetch || ((...args) => fetch(...args)))
+          });
+          if (!result.fallback) return { ok: true, ...result };
+        }
+        const result = await provider.impl.streamChat(cfg, request, onDelta, controller.signal, onInfo);
         return { ok: true, ...result };
       } catch (err) {
         if (controller.signal.aborted) return { ok: true, aborted: true };

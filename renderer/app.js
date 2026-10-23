@@ -687,6 +687,8 @@ function renderMessage(chat, msg, index) {
         !isUser && msg.stats ? statsBadge(msg.stats) : null,
         !isUser && !msg.stats && msg.pending && msg.runningOn ? liveBadge(msg.runningOn) : null,
         when ? h('span', { text: `· ${when}` }) : null),
+      !isUser && msg.shots && msg.shots.length ? h('div', { class: 'msg-pictures shots' },
+        ...msg.shots.map((sh) => h('img', { src: sh.src, alt: sh.label || 'Browser screenshot', title: `${sh.label || 'What the model saw'} (show larger)`, onclick: () => showPicture(sh.src) }))) : null,
       picturesOf(msg).length ? h('div', { class: 'msg-pictures' },
         ...picturesOf(msg).map((src) => h('img', { src, alt: 'Picture', title: 'Show larger', onclick: () => showPicture(src) }))) : null,
       msg.content || !picturesOf(msg).length ? content : null,
@@ -783,7 +785,10 @@ function agentEvent(chat, msg, evt) {
   if (evt.kind === 'tool') {
     msg.tools = msg.tools || [];
     const known = evt.id && msg.tools.find((t) => t.id === evt.id);
-    if (known) known.status = evt.status || known.status;
+    if (known) {
+      known.status = evt.status || known.status;
+      if (evt.relabel && evt.label) known.label = String(evt.label).slice(0, 200);
+    }
     else if (evt.status !== 'completed') msg.tools.push({ id: evt.id || uid(), emoji: evt.emoji || '', label: String(evt.label || evt.tool || 'tool').slice(0, 200), status: evt.status || 'running' });
   } else if (evt.kind === 'approval') {
     msg.approvals = msg.approvals || [];
@@ -791,6 +796,9 @@ function agentEvent(chat, msg, evt) {
     if (S.current !== chat || document.hidden) toast('Hermes is asking for permission. Open the chat to answer.', 5000);
   } else if (evt.kind === 'status') {
     msg.agentStatus = String(evt.text).slice(0, 200);
+  } else if (evt.kind === 'shot' && /^data:image\//.test(evt.src || '')) {
+    // What the model saw in the browser (a few, to keep the chat small).
+    msg.shots = [...(msg.shots || []), { src: evt.src, label: String(evt.label || '').slice(0, 120) }].slice(-3);
   } else if (evt.kind === 'replace' && typeof evt.text === 'string') {
     // Part of the reply was missed (the connection dropped for a long time): the finished answer.
     msg.content = evt.text;
@@ -1575,7 +1583,12 @@ function linksIn(text) {
   return out;
 }
 
-const readsLinks = (model) => S.settings.readLinks !== false && !!api.web && !!model && model.provider !== 'hermes';
+const readsLinks = (model) => S.settings.readLinks !== false && !!api.web && !!model && !isAgent(model);
+
+// "Let models use a browser": search, open pages, and on a computer click, type
+// and take screenshots (src/browser-tools.js). Not for agents (they have their
+// own) or the phone's own models (they can't use tools).
+const browses = (model) => S.settings.browser !== false && !!model && !isAgent(model) && model.provider !== 'onDevice';
 
 // What the model is told about the pages read for a message.
 function linkContext(links, full, model) {
@@ -1609,7 +1622,8 @@ async function readLinksFor(chat, asker, msg, model) {
   msg.agentStatus = `Reading ${[...new Set(urls.map(siteOf))].join(', ')}…`;
   scheduleMessageRender(chat, msg);
   asker.links = await Promise.all(urls.map((url) => known.find((l) => l.url === url && !l.error)
-    || api.web.read(url).catch((err) => ({ url, error: errorText(err) }))));
+    || api.web.read(url).then((p) => ({ url: p.url, title: p.title, description: p.description, text: p.text, cut: p.cut }),
+      (err) => ({ url, error: errorText(err) }))));
   delete msg.agentStatus;
   await saveChatNow(chat);
   if (S.current === chat) renderChat();
@@ -1719,7 +1733,8 @@ async function runCompletion(chat) {
     system,
     messages: history,
     temperature: S.settings.temperature === '' ? undefined : Number(S.settings.temperature),
-    maxTokens: Number(S.settings.maxTokens) || 0
+    maxTokens: Number(S.settings.maxTokens) || 0,
+    browse: browses(model)
   });
 
   S.requests.delete(requestId);
@@ -2220,6 +2235,9 @@ function openSettings(tab = 'general') {
         field('Theme', theme),
         field('How replies appear', replyStyle, 'How a reply shows up while it\'s being written.'),
         check('Read links in my messages: the app opens the page and gives the model its text (not for Hermes, which browses itself)', s, 'readLinks'),
+        check(S.info.mobile
+          ? 'Let models use a browser: search the web and open pages (as text on this phone; a computer\'s models use its browser)'
+          : 'Let models use a browser: search the web, open pages, click, type and take screenshots', s, 'browser'),
         check('Press Enter to send (Shift+Enter for a new line)', s, 'sendOnEnter'),
         check('Name new chats automatically with AI', s, 'autoTitle'),
         field('Temperature', bind(h('input', { class: 'input', type: 'number', step: '0.1', min: '0', max: '2', value: s.temperature }), s, 'temperature'),
