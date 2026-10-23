@@ -19,6 +19,7 @@ const DEFAULT_SETTINGS = {
   autoTitle: true,
   sendOnEnter: true,
   replyStyle: 'sentences',  // how replies appear while written: 'sentences', 'words' or 'whole'
+  readLinks: true,  // open links in the user's messages and give the model the page's text
   temperature: 0.7,
   maxTokens: 0,
   historyLimit: 0,

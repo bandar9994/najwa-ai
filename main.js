@@ -13,6 +13,7 @@ const { desktopGoogleAuth } = require('./src/google-auth-desktop');
 const { linkKey } = require('./src/remote');
 const { startRemoteServer, localAddresses } = require('./src/remote-server');
 const { createVoice } = require('./src/voice-desktop');
+const { readLink } = require('./src/link-reader');
 const os = require('os');
 
 // The app was called Balimda before Najwa AI. Its internal name stays
@@ -531,6 +532,9 @@ function registerIpc() {
       activeRequests.delete(requestId);
     }
   });
+
+  // "Read links": a page's text for the model (src/link-reader.js).
+  ipcMain.handle('web:read', (_e, url) => readLink(url));
 
   ipcMain.handle('ai:approve', (_e, providerId, _model, payload) => approveOn(providerId, payload));
 

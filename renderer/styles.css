@@ -662,6 +662,20 @@ textarea.input { resize: vertical; }
 .hint.model-note { color: var(--accent); }
 .msg .meta .stats.live { cursor: default; }
 .msg .waiting { margin-top: 6px; font-size: 13px; color: var(--text-dim); }
+.msg .link-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.msg .link-chip {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--bg-hover);
+  color: var(--text-dim);
+  text-decoration: none;
+}
+.msg .link-chip.failed { color: var(--danger); }
 .msg .recalled { margin-top: 8px; font-size: 12px; color: var(--text-dim); }
 .msg .recalled a { color: var(--accent); }
 .memory-count { margin-top: 4px; }

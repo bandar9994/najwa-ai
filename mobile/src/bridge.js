@@ -13,6 +13,7 @@ import { Share } from '@capacitor/share';
 import { Storage } from '../../src/storage.js';
 import { PROVIDERS, hermesProvider, normalizeMessages } from '../../src/providers.js';
 import { makeNativeFetch } from '../../src/native-fetch.js';
+import { readLink } from '../../src/link-reader.js';
 import { Sync, SyncError } from '../../src/sync.js';
 import { remoteComputers } from '../../src/remote.js';
 import * as local from './on-device.js';
@@ -156,11 +157,11 @@ const computers = remoteComputers({
   getComputers: async () => (await (await ready).getSettings()).computers
 });
 
-// Hermes Agent through the phone's own network code: Hermes refuses the web
-// view's requests unless its API_SERVER_CORS_ORIGINS lists the app.
-const hermes = isNative && Capacitor.isPluginAvailable('Net')
-  ? { ...PROVIDERS.hermes, impl: hermesProvider(makeNativeFetch(registerPlugin('Net'))) }
-  : PROVIDERS.hermes;
+// The phone's own network code, for requests the web view can't make: Hermes
+// refuses the web view's requests unless its API_SERVER_CORS_ORIGINS lists the
+// app, and other websites (for "Read links") don't allow the app's page at all.
+const nativeFetch = isNative && Capacitor.isPluginAvailable('Net') ? makeNativeFetch(registerPlugin('Net')) : null;
+const hermes = nativeFetch ? { ...PROVIDERS.hermes, impl: hermesProvider(nativeFetch) } : PROVIDERS.hermes;
 
 const providers = {
   onDevice: {
@@ -308,6 +309,9 @@ window.balimda = {
       // Android only: iOS apps don't close or minimize themselves.
       if (Capacitor.getPlatform() === 'android') await App.minimizeApp();
     }
+  },
+  web: {
+    read: (url) => readLink(url, nativeFetch || ((...args) => fetch(...args)))
   },
   ai: {
     async models(providerId) {

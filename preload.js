@@ -200,6 +200,9 @@ contextBridge.exposeInMainWorld('balimda', {
     openDataDir: invoke('app:openDataDir'),
     legal: invoke('app:legal')
   },
+  web: {
+    read: invoke('web:read')
+  },
   ai: {
     models: invoke('ai:models'),
     chat: invoke('ai:chat'),
