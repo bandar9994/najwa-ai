@@ -337,7 +337,7 @@ async function hermesError(res) {
 
 // The reply as it's written: reasoning in a <think> block, then the answer.
 function replyWriter(onDelta) {
-  const w = { text: '', thinking: false, answered: false, answerAt: 0 };
+  const w = { text: '', thinking: false, answered: false, answerAt: 0, needGap: false };
   const out = (piece) => {
     w.text += piece;
     onDelta(piece);
@@ -352,6 +352,8 @@ function replyWriter(onDelta) {
     if (!piece) return;
     if (w.thinking) out('</think>\n\n');
     w.thinking = false;
+    if (w.needGap) out('\n\n');
+    w.needGap = false;
     if (!w.answered) w.answerAt = w.text.length;
     w.answered = true;
     out(piece);
@@ -359,6 +361,10 @@ function replyWriter(onDelta) {
   w.close = () => {
     if (w.thinking) out('</think>');
     w.thinking = false;
+  };
+  // Text written after this (e.g. after using a tool) starts a new paragraph.
+  w.gap = () => {
+    if (w.answered) w.needGap = true;
   };
   return w;
 }
@@ -613,11 +619,14 @@ const hermesProvider = (doFetch = (...args) => fetch(...args)) => {
       }
       const { output, missed } = await followRun(cfg, runId, w, signal, onInfo);
       const answer = w.answered ? w.text.slice(w.answerAt) : '';
-      if (output && (!w.answered || (missed && output !== answer))) {
-        if (output.startsWith(answer)) {
+      // Pictures come only with the finished answer: its MEDIA: files as
+      // inline images (streamed text has just their paths on Hermes' computer).
+      const pictures = /!\[[^\]]*\]\(data:image\//.test(output);
+      if (output && (!w.answered || ((missed || pictures) && output !== answer))) {
+        if (output.startsWith(answer) && !pictures) {
           w.answer(output.slice(answer.length));
         } else {
-          // Part of the reply was missed while away: use the finished answer.
+          // Part of the reply was missed while away, or it has pictures: use the finished answer.
           w.close();
           w.text = w.text.slice(0, w.answerAt) + output;
           onInfo({ kind: 'replace', text: w.text });
@@ -668,8 +677,7 @@ const anthropic = {
     return ids.length ? ids : ANTHROPIC_DEFAULT_MODELS;
   },
 
-  async streamChat(cfg, req, onDelta, signal) {
-    const client = this.client(cfg);
+  params(req) {
     const limit = anthropicMaxTokens.get(req.model) || DEFAULT_ANTHROPIC_MAX_TOKENS;
     const params = {
       model: req.model,
@@ -678,17 +686,23 @@ const anthropic = {
     };
     if (req.system) params.system = req.system;
     if (SUMMARIZED_THINKING.test(req.model) && req.think !== false) params.thinking = { type: 'adaptive', display: 'summarized' };
+    return params;
+  },
 
-    let stream;
-    if (FALLBACK_MODELS.has(req.model)) {
+  stream(client, params, signal) {
+    if (FALLBACK_MODELS.has(params.model)) {
       // Re-run a declined request on Anthropic's recommended fallback model.
-      stream = client.beta.messages.stream(
+      return client.beta.messages.stream(
         { ...params, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' },
         { signal }
       );
-    } else {
-      stream = client.messages.stream(params, { signal });
     }
+    return client.messages.stream(params, { signal });
+  },
+
+  async streamChat(cfg, req, onDelta, signal) {
+    const client = this.client(cfg);
+    const stream = this.stream(client, this.params(req), signal);
 
     let text = '';
     let thinking = false;
@@ -753,4 +767,8 @@ function normalizeMessages(messages) {
   return out;
 }
 
-module.exports = { PROVIDERS, hermesProvider, normalizeMessages, ANTHROPIC_DEFAULT_MODELS, readLines, readSse };
+module.exports = {
+  PROVIDERS, hermesProvider, normalizeMessages, ANTHROPIC_DEFAULT_MODELS, readLines, readSse,
+  // For tool use (src/tool-chat.js).
+  trimSlash, httpError, withSystem, textOnly, picturesOf, ollamaMessages, openaiMessages, anthropicMessages, capabilitiesOf, replyWriter
+};

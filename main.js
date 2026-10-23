@@ -13,6 +13,10 @@ const { desktopGoogleAuth } = require('./src/google-auth-desktop');
 const { linkKey } = require('./src/remote');
 const { startRemoteServer, localAddresses } = require('./src/remote-server');
 const { createVoice } = require('./src/voice-desktop');
+const { readLink } = require('./src/link-reader');
+const { chatWithTools, TOOL_KINDS } = require('./src/tool-chat');
+const { desktopBrowser } = require('./src/browser-desktop');
+const { browsingNote } = require('./src/browser-tools');
 const os = require('os');
 
 // The app was called Balimda before Najwa AI. Its internal name stays
@@ -240,20 +244,28 @@ async function runChat(providerId, req, onDelta, signal, onInfo) {
   const provider = PROVIDERS[providerId];
   if (!provider) throw new Error(`Unknown provider: ${providerId}`);
   const cfg = (await storage.getSettings()).providers[providerId] || {};
-  return provider.impl.streamChat(
-    cfg,
-    {
-      model: req.model,
-      system: req.system,
-      messages: normalizeMessages(req.messages || []),
-      temperature: req.temperature,
-      maxTokens: req.maxTokens,
-      think: req.think
-    },
-    onDelta,
-    signal,
-    onInfo
-  );
+  const request = {
+    model: req.model,
+    system: req.system,
+    messages: normalizeMessages(req.messages || []),
+    temperature: req.temperature,
+    maxTokens: req.maxTokens,
+    think: req.think
+  };
+  // "Let models use a browser": this computer's hidden browser (also for the
+  // phone, when it uses this computer's models).
+  if (req.browse && TOOL_KINDS[providerId]) {
+    const browser = desktopBrowser();
+    try {
+      const result = await chatWithTools({
+        kind: TOOL_KINDS[providerId], cfg, req: { ...request, system: browsingNote(request.system, true) }, onDelta, signal, onInfo, tools: browser
+      });
+      if (!result.fallback) return result;
+    } finally {
+      browser.close();
+    }
+  }
+  return provider.impl.streamChat(cfg, request, onDelta, signal, onInfo);
 }
 
 async function checkShared(providerId) {
@@ -531,6 +543,9 @@ function registerIpc() {
       activeRequests.delete(requestId);
     }
   });
+
+  // "Read links": a page's text for the model (src/link-reader.js).
+  ipcMain.handle('web:read', (_e, url) => readLink(url));
 
   ipcMain.handle('ai:approve', (_e, providerId, _model, payload) => approveOn(providerId, payload));
 

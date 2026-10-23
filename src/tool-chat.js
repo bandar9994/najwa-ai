@@ -1,0 +1,294 @@
+// Najwa AI — © 2026 Bandar Altariqi. All rights reserved.
+// Licensed under the Najwa AI License (see LICENSE): non-commercial use only;
+// keep the Najwa AI name and the "Najwa AI by Bandar Altariqi" credit; no rebranding.
+
+// Replies where the model can use tools (the browser, see src/browser-tools.js).
+// The model answers, asks for a tool, gets its result, and goes on, until it
+// answers without asking for one. Each kind of API takes tools its own way;
+// for the user it's one reply, with each tool step shown as it happens.
+//
+// Models that can't use tools (an Ollama model without them, a server that
+// refuses the request) get the ordinary reply instead: chatWithTools then
+// resolves with { fallback: true } before writing anything.
+
+'use strict';
+
+const {
+  PROVIDERS, trimSlash, httpError, withSystem, textOnly, picturesOf, ollamaMessages, openaiMessages, anthropicMessages,
+  capabilitiesOf, replyWriter, readLines
+} = require('./providers');
+
+// Which providers can use tools, and how their API takes them.
+const TOOL_KINDS = { anthropic: 'anthropic', openai: 'openai', openaiCompatible: 'openaiCompatible', ollama: 'ollama' };
+const MAX_STEPS = 12;
+
+class ToolsUnsupported extends Error {}
+
+// A server that refuses tools says so with a 400 that mentions them.
+async function toolsError(res) {
+  const err = await httpError(res);
+  return res.status === 400 && /tool|function/i.test(err.message) ? new ToolsUnsupported(err.message) : err;
+}
+
+const abortError = () => {
+  const err = new Error('The operation was aborted.');
+  err.name = 'AbortError';
+  return err;
+};
+
+const dataUrlParts = (url) => {
+  const m = /^data:([^;,]+);base64,(.*)$/s.exec(String(url || ''));
+  return m ? { mediaType: m[1], data: m[2] } : null;
+};
+
+// ---- Claude ---------------------------------------------------------------
+
+const anthropicKind = {
+  async turn(cfg, req, defs, extra, w, signal) {
+    const impl = PROVIDERS.anthropic.impl;
+    const client = impl.client(cfg);
+    const params = impl.params(req);
+    params.messages = [...anthropicMessages(req.messages), ...extra];
+    params.tools = defs.map((t) => ({ name: t.name, description: t.description, input_schema: t.parameters }));
+    const stream = impl.stream(client, params, signal);
+    for await (const event of stream) {
+      if (event.type !== 'content_block_delta') continue;
+      if (event.delta.type === 'thinking_delta') w.reasoning(event.delta.thinking);
+      else if (event.delta.type === 'text_delta') w.answer(event.delta.text);
+    }
+    const final = await stream.finalMessage();
+    if (final.stop_reason === 'refusal') {
+      const why = final.stop_details && final.stop_details.explanation;
+      w.answer(`\n\n_The model declined this request${why ? `: ${why}` : '.'}_`);
+    }
+    return {
+      calls: final.content.filter((b) => b.type === 'tool_use').map((b) => ({ id: b.id, name: b.name, args: b.input || {} })),
+      // The whole answer goes back, thinking included (Claude needs it to go on).
+      assistant: [{ role: 'assistant', content: final.content }],
+      stopReason: final.stop_reason
+    };
+  },
+
+  results(calls, results) {
+    return [{
+      role: 'user',
+      content: calls.map((c, i) => {
+        const r = results[i];
+        const blocks = [{ type: 'text', text: r.text || '(no text)' }];
+        const pic = dataUrlParts(r.image);
+        if (pic) blocks.push({ type: 'image', source: { type: 'base64', media_type: pic.mediaType, data: pic.data } });
+        return { type: 'tool_result', tool_use_id: c.id, content: blocks, ...(r.error ? { is_error: true } : {}) };
+      })
+    }];
+  }
+};
+
+// ---- OpenAI and OpenAI-compatible servers ------------------------------------
+
+const openaiKind = (compatible) => ({
+  async turn(cfg, req, defs, extra, w, signal) {
+    const body = {
+      model: req.model,
+      messages: [...withSystem(req.system, openaiMessages(req.messages)), ...extra],
+      stream: true,
+      tools: defs.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters } }))
+    };
+    if (compatible) {
+      if (req.temperature != null) body.temperature = req.temperature;
+      if (req.maxTokens > 0) body.max_tokens = req.maxTokens;
+    } else if (req.maxTokens > 0) {
+      body.max_completion_tokens = req.maxTokens;
+    }
+    const headers = { 'Content-Type': 'application/json' };
+    if (cfg.apiKey) headers.Authorization = `Bearer ${cfg.apiKey}`;
+    const res = await fetch(`${trimSlash(cfg.baseUrl)}/chat/completions`, { method: 'POST', headers, body: JSON.stringify(body), signal });
+    if (!res.ok) throw await toolsError(res);
+    let text = '';
+    let reasoning = '';
+    let stopReason = 'end_turn';
+    const calls = [];
+    for await (const line of readLines(res.body)) {
+      if (!line.startsWith('data:')) continue;
+      const data = line.slice(5).trim();
+      if (data === '[DONE]') break;
+      let evt;
+      try {
+        evt = JSON.parse(data);
+      } catch {
+        continue;
+      }
+      if (evt.error) throw new Error(evt.error.message || JSON.stringify(evt.error));
+      const choice = evt.choices && evt.choices[0];
+      const delta = (choice && choice.delta) || {};
+      const thought = delta.reasoning_content || delta.reasoning;
+      if (thought && typeof thought === 'string') {
+        reasoning += thought;
+        w.reasoning(thought);
+      }
+      if (delta.content) {
+        text += delta.content;
+        w.answer(delta.content);
+      }
+      for (const tc of delta.tool_calls || []) {
+        const i = tc.index ?? calls.length;
+        const call = calls[i] || (calls[i] = { id: '', name: '', argsText: '' });
+        if (tc.id) call.id = tc.id;
+        if (tc.function && tc.function.name) call.name += tc.function.name;
+        if (tc.function && tc.function.arguments) call.argsText += tc.function.arguments;
+      }
+      if (choice && choice.finish_reason === 'length') stopReason = 'max_tokens';
+    }
+    const made = calls.filter(Boolean).map((c, i) => {
+      let args = {};
+      try {
+        args = c.argsText ? JSON.parse(c.argsText) : {};
+      } catch {
+        args = { _unreadable: c.argsText };
+      }
+      return { id: c.id || `call_${i}`, name: c.name, args, argsText: c.argsText || '{}' };
+    });
+    const assistant = {
+      role: 'assistant',
+      content: text || null,
+      ...(made.length ? { tool_calls: made.map((c) => ({ id: c.id, type: 'function', function: { name: c.name, arguments: c.argsText } })) } : {})
+    };
+    // Thinking models on some servers (DeepSeek's, for one) want their
+    // reasoning back while they use tools.
+    if (compatible && reasoning) assistant.reasoning_content = reasoning;
+    return { calls: made, assistant: [assistant], stopReason };
+  },
+
+  results(calls, results) {
+    const out = calls.map((c, i) => ({ role: 'tool', tool_call_id: c.id, content: results[i].text || '(no text)' }));
+    // Tool results can't hold pictures: a screenshot follows as a message.
+    const pics = results.filter((r) => r.image);
+    if (pics.length) {
+      out.push({
+        role: 'user',
+        content: [{ type: 'text', text: 'The browser screenshot you asked for:' }, ...pics.map((r) => ({ type: 'image_url', image_url: { url: r.image } }))]
+      });
+    }
+    return out;
+  }
+});
+
+// ---- Ollama --------------------------------------------------------------------
+
+const ollamaKind = {
+  async turn(cfg, req, defs, extra, w, signal) {
+    const caps = await capabilitiesOf(cfg, req.model);
+    if (caps && !caps.includes('tools')) throw new ToolsUnsupported(`${req.model} can't use tools.`);
+    this.vision = !caps || caps.includes('vision');
+    let messages = req.messages;
+    if (caps && !caps.includes('vision') && messages.some((m) => picturesOf(m).length)) messages = textOnly(messages);
+    const options = {};
+    if (req.temperature != null) options.temperature = req.temperature;
+    if (req.maxTokens > 0) options.num_predict = req.maxTokens;
+    const body = {
+      model: req.model,
+      messages: [...withSystem(req.system, ollamaMessages(messages)), ...extra],
+      stream: true,
+      keep_alive: '30m',
+      options,
+      tools: defs.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters } }))
+    };
+    if ((cfg.think === false || req.think === false) && caps && caps.includes('thinking')) body.think = false;
+    const res = await fetch(`${trimSlash(cfg.baseUrl)}/api/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal });
+    if (!res.ok) throw await toolsError(res);
+    let text = '';
+    let stopReason = 'end_turn';
+    let stats;
+    const calls = [];
+    for await (const line of readLines(res.body)) {
+      if (!line.trim()) continue;
+      const evt = JSON.parse(line);
+      if (evt.error) {
+        if (/does not support tools/i.test(evt.error)) throw new ToolsUnsupported(evt.error);
+        throw new Error(evt.error);
+      }
+      const m = evt.message || {};
+      if (m.thinking) w.reasoning(m.thinking);
+      if (m.content) {
+        text += m.content;
+        w.answer(m.content);
+      }
+      for (const tc of m.tool_calls || []) calls.push(tc);
+      if (evt.done) {
+        if (evt.done_reason === 'length') stopReason = 'max_tokens';
+        if (evt.eval_count) {
+          const ns = (v) => (Number(v) || 0) / 1e6;
+          stats = { engine: 'Ollama', device: 'Ollama', loadMs: ns(evt.load_duration), promptTokens: evt.prompt_eval_count || 0, promptMs: ns(evt.prompt_eval_duration), tokens: evt.eval_count, ms: ns(evt.eval_duration) };
+        }
+      }
+    }
+    return {
+      calls: calls.map((tc, i) => ({ id: `call_${i}`, name: tc.function && tc.function.name, args: (tc.function && tc.function.arguments) || {} })),
+      assistant: [{ role: 'assistant', content: text, tool_calls: calls }],
+      stopReason,
+      stats
+    };
+  },
+
+  results(calls, results) {
+    return calls.map((c, i) => {
+      const r = results[i];
+      const pic = this.vision && dataUrlParts(r.image);
+      return { role: 'tool', tool_name: c.name, content: r.text || '(no text)', ...(pic ? { images: [pic.data] } : {}) };
+    });
+  }
+};
+
+const KINDS = { anthropic: anthropicKind, openai: openaiKind(false), openaiCompatible: openaiKind(true), ollama: ollamaKind };
+
+/**
+ * One reply with tools.
+ * @param tools { defs: [{ name, description, parameters }], run(name, args, signal) -> { text, image?, error? },
+ *               describe(call) -> label shown for the step }
+ * onInfo gets { kind: 'tool', id, emoji, label, status } for each step and
+ * { kind: 'shot', src, label } for a screenshot.
+ * Resolves with { text, stopReason, stats } or { fallback: true }.
+ */
+async function chatWithTools({ kind, cfg, req, onDelta, signal, onInfo = () => {}, tools }) {
+  if (!KINDS[kind]) return { fallback: true };
+  const k = Object.create(KINDS[kind]); // per reply (Ollama remembers whether the model can see)
+  const w = replyWriter(onDelta);
+  const extra = [];
+  let turn;
+  for (let step = 0; ; step++) {
+    try {
+      turn = await k.turn(cfg, req, tools.defs, extra, w, signal);
+    } catch (err) {
+      if (err instanceof ToolsUnsupported && step === 0 && !w.text) return { fallback: true };
+      throw err;
+    }
+    if (!turn.calls.length) break;
+    extra.push(...turn.assistant);
+    w.gap();
+    const results = [];
+    for (const [i, call] of turn.calls.entries()) {
+      if (signal && signal.aborted) throw abortError();
+      const id = `${call.id || 'call'}-${step}-${i}`;
+      const label = tools.describe(call);
+      onInfo({ kind: 'tool', id, emoji: '🌐', label, status: 'running' });
+      let r;
+      if (step >= MAX_STEPS) {
+        r = { text: 'You have used the browser enough for this reply. Answer the user now with what you found.', error: true };
+      } else {
+        try {
+          r = await tools.run(call.name, call.args || {}, signal);
+        } catch (err) {
+          if (signal && signal.aborted) throw abortError();
+          r = { text: `That didn't work: ${err.message || err}`, error: true };
+        }
+      }
+      onInfo({ kind: 'tool', id, label: r.error ? `${label} (didn't work)` : label, relabel: true, status: 'completed' });
+      if (r.image) onInfo({ kind: 'shot', src: r.image, label });
+      results.push(r);
+    }
+    extra.push(...k.results(turn.calls, results));
+  }
+  w.close();
+  return { text: w.text, stopReason: turn.stopReason, stats: turn.stats };
+}
+
+module.exports = { chatWithTools, TOOL_KINDS, MAX_STEPS };

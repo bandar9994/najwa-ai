@@ -13,6 +13,10 @@ import { Share } from '@capacitor/share';
 import { Storage } from '../../src/storage.js';
 import { PROVIDERS, hermesProvider, normalizeMessages } from '../../src/providers.js';
 import { makeNativeFetch } from '../../src/native-fetch.js';
+import { readLink } from '../../src/link-reader.js';
+import { chatWithTools, TOOL_KINDS } from '../../src/tool-chat.js';
+import { textBrowser, browsingNote } from '../../src/browser-tools.js';
+import { nativeBrowser } from '../../src/browser-native.js';
 import { Sync, SyncError } from '../../src/sync.js';
 import { remoteComputers } from '../../src/remote.js';
 import * as local from './on-device.js';
@@ -156,11 +160,17 @@ const computers = remoteComputers({
   getComputers: async () => (await (await ready).getSettings()).computers
 });
 
-// Hermes Agent through the phone's own network code: Hermes refuses the web
-// view's requests unless its API_SERVER_CORS_ORIGINS lists the app.
-const hermes = isNative && Capacitor.isPluginAvailable('Net')
-  ? { ...PROVIDERS.hermes, impl: hermesProvider(makeNativeFetch(registerPlugin('Net'))) }
-  : PROVIDERS.hermes;
+// The phone's own network code, for requests the web view can't make: Hermes
+// refuses the web view's requests unless its API_SERVER_CORS_ORIGINS lists the
+// app, and other websites (for "Read links") don't allow the app's page at all.
+const nativeFetch = isNative && Capacitor.isPluginAvailable('Net') ? makeNativeFetch(registerPlugin('Net')) : null;
+const hermes = nativeFetch ? { ...PROVIDERS.hermes, impl: hermesProvider(nativeFetch) } : PROVIDERS.hermes;
+
+// The browser for models: a hidden web view of the app's own (search, open,
+// click, type, screenshots), or pages as text where the app doesn't have one.
+const Browse = isNative && Capacitor.isPluginAvailable('Browse') ? registerPlugin('Browse') : null;
+const webFetch = nativeFetch || ((...args) => fetch(...args));
+const modelBrowser = () => (Browse ? nativeBrowser(Browse, { doFetch: webFetch }) : textBrowser(webFetch));
 
 const providers = {
   onDevice: {
@@ -309,6 +319,9 @@ window.balimda = {
       if (Capacitor.getPlatform() === 'android') await App.minimizeApp();
     }
   },
+  web: {
+    read: (url) => readLink(url, nativeFetch || ((...args) => fetch(...args)))
+  },
   ai: {
     async models(providerId) {
       const provider = providers[providerId];
@@ -323,25 +336,36 @@ window.balimda = {
       const controller = new AbortController();
       active.set(req.requestId, controller);
       try {
-        const result = await provider.impl.streamChat(
-          cfg,
-          {
-            model: req.model,
-            system: req.system,
-            messages: normalizeMessages(req.messages),
-            temperature: req.temperature,
-            maxTokens: req.maxTokens,
-            think: req.think,
-            background: !!req.background
-          },
-          (text) => {
-            for (const cb of aiListeners) cb({ requestId: req.requestId, type: 'delta', text });
-          },
-          controller.signal,
-          (info) => {
-            for (const cb of aiListeners) cb({ requestId: req.requestId, type: 'info', ...info });
+        const request = {
+          model: req.model,
+          system: req.system,
+          messages: normalizeMessages(req.messages),
+          temperature: req.temperature,
+          maxTokens: req.maxTokens,
+          think: req.think,
+          background: !!req.background,
+          // "Let models use a browser": a computer's models use its own browser.
+          browse: !!req.browse
+        };
+        const onDelta = (text) => {
+          for (const cb of aiListeners) cb({ requestId: req.requestId, type: 'delta', text });
+        };
+        const onInfo = (info) => {
+          for (const cb of aiListeners) cb({ requestId: req.requestId, type: 'info', ...info });
+        };
+        if (req.browse && TOOL_KINDS[req.provider]) {
+          const browser = modelBrowser();
+          try {
+            const result = await chatWithTools({
+              kind: TOOL_KINDS[req.provider], cfg, req: { ...request, system: browsingNote(request.system, !!Browse) },
+              onDelta, signal: controller.signal, onInfo, tools: browser
+            });
+            if (!result.fallback) return { ok: true, ...result };
+          } finally {
+            browser.close();
           }
-        );
+        }
+        const result = await provider.impl.streamChat(cfg, request, onDelta, controller.signal, onInfo);
         return { ok: true, ...result };
       } catch (err) {
         if (controller.signal.aborted) return { ok: true, aborted: true };
