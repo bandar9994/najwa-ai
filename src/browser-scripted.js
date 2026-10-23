@@ -23,7 +23,6 @@
 const { defsFor, describe, pageReport, searchReport, httpUrl } = require('./browser-tools');
 const { searchWeb } = require('./link-reader');
 
-const SETTLE_MS = 1200; // time for a page's scripts to fill it in
 
 // Runs in the page: numbers its links, buttons and text boxes, and reads its text.
 const SNAPSHOT_JS = `JSON.stringify((() => {
@@ -92,6 +91,42 @@ const SUBMIT_JS = (n) => `JSON.stringify((() => {
 
 const STATE_JS = 'JSON.stringify({ url: location.href, ready: document.readyState })';
 
+// Whether the page has settled: loaded, its fonts and on-screen pictures in,
+// no animation still playing (endless ones like spinners aside), and nothing
+// on screen moved or faded since last time ("sig": where things are, how
+// visible they are). Pages often slide and fade things in after loading; a
+// screenshot taken in the middle shows them half-way, overlapping.
+const QUIET_JS = `JSON.stringify((() => {
+  const vh = innerHeight;
+  const endless = new Set();
+  let anims = 0;
+  for (const a of document.getAnimations ? document.getAnimations() : []) {
+    if (a.playState !== 'running') continue;
+    const t = a.effect && a.effect.getComputedTiming ? a.effect.getComputedTiming() : null;
+    if (t && t.iterations === Infinity) {
+      if (a.effect.target) endless.add(a.effect.target);
+    } else {
+      anims++;
+    }
+  }
+  const imgs = Array.from(document.images).filter((i) => {
+    const r = i.getBoundingClientRect();
+    return r.top < vh && r.bottom > 0 && !i.complete;
+  }).length;
+  let sig = 0;
+  let n = 0;
+  for (const el of document.body ? document.body.getElementsByTagName('*') : []) {
+    if (n >= 400) break;
+    if (endless.has(el) || endless.has(el.parentElement)) continue;
+    const r = el.getBoundingClientRect();
+    if (r.bottom < 0 || r.top > vh || r.width === 0) continue;
+    n++;
+    sig = (sig * 31 + Math.round(r.top) * 7 + Math.round(r.left) * 3 + Math.round(r.width)
+      + Math.round(parseFloat(getComputedStyle(el).opacity || '1') * 100)) % 1000000007;
+  }
+  return { ready: document.readyState, fonts: document.fonts ? document.fonts.status : 'loaded', anims, imgs, sig };
+})())`;
+
 // Chromium's "ERR_NAME_NOT_RESOLVED (-105) loading '…'" in words.
 function loadError(err) {
   const msg = String((err && err.message) || err);
@@ -135,6 +170,22 @@ function scriptedBrowser(engine, { doFetch = (...args) => fetch(...args) } = {})
     return page;
   };
 
+  // Waits (up to `max` ms) until the page has settled; see QUIET_JS.
+  const quiet = async (signal, max = 8000) => {
+    const until = Date.now() + max;
+    await sleep(500, signal);
+    let last = null;
+    let still = 0;
+    while (Date.now() < until && !(signal && signal.aborted)) {
+      const q = await run(QUIET_JS).catch(() => null);
+      const calm = q && q.ready === 'complete' && q.fonts === 'loaded' && !q.anims && !q.imgs;
+      still = calm && last && q.sig === last.sig ? still + 1 : 0;
+      if (still >= 2) return;
+      last = q;
+      await sleep(350, signal);
+    }
+  };
+
   // After a click or Enter: wait for the page to change (or not), then read it.
   const settle = async (before, signal) => {
     const until = Date.now() + 6000;
@@ -144,7 +195,7 @@ function scriptedBrowser(engine, { doFetch = (...args) => fetch(...args) } = {})
       if (st && st.ready === 'complete' && (st.url !== before || Date.now() > until - 4500)) break;
       await sleep(400, signal);
     }
-    await sleep(SETTLE_MS, signal);
+    await quiet(signal);
     return snapshot();
   };
 
@@ -162,7 +213,7 @@ function scriptedBrowser(engine, { doFetch = (...args) => fetch(...args) } = {})
       if (name === 'web_search') return { text: searchReport(args.query, await searchWeb(String(args.query || ''), doFetch)) };
       if (name === 'open_page') {
         await engine.load(httpUrl(args.url), signal);
-        await sleep(SETTLE_MS, signal);
+        await quiet(signal);
         return { text: pageReport(await snapshot()) };
       }
       if (name === 'click') {
@@ -185,9 +236,10 @@ function scriptedBrowser(engine, { doFetch = (...args) => fetch(...args) } = {})
       }
       if (name === 'screenshot') {
         needPage();
+        await quiet(signal, 5000);
         const image = await engine.screenshot();
         if (!image) return { text: 'The screenshot came out empty. Try again in a moment.', error: true };
-        return { text: `Screenshot of ${page.url} (the top of the page, as a visitor first sees it).`, image };
+        return { text: `Screenshot of ${page.url}: the part of the page on screen now, in a ${engine.viewport || 'browser'} window. Things like pop-ups and banners that cover part of it are what a visitor sees too.`, image };
       }
       return { text: `There's no tool called ${name}.`, error: true };
     },

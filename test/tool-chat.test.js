@@ -245,6 +245,7 @@ test('Phone browser: drives the app\'s hidden web view through the Browse plugin
     async eval({ js }) {
       if (js.includes('data-najwa-id') && js.includes('items')) return { value: JSON.stringify(page) };
       if (js.includes('el.click()')) { page.url = 'https://cloudpick.sa/pricing'; page.title = 'Pricing'; return { value: 'true' }; }
+      if (js.includes('getAnimations')) return { value: JSON.stringify({ ready: 'complete', fonts: 'loaded', anims: 0, imgs: 0, sig: 1 }) };
       if (js.includes('readyState')) return { value: JSON.stringify({ url: page.url, ready: 'complete' }) };
       return { value: 'null' };
     },

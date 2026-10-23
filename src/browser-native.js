@@ -25,6 +25,7 @@ const LOAD_TIMEOUT_MS = 25000;
 function nativeEngine(Browse) {
   let opened = false;
   return {
+    viewport: '400×860 phone',
     async load(url, signal) {
       if (!opened) {
         await Browse.open();
