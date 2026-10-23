@@ -15,6 +15,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(GoogleAuthPlugin.class);
         registerPlugin(VoicePlugin.class);
         registerPlugin(NetPlugin.class);
+        registerPlugin(BrowsePlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

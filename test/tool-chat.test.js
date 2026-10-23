@@ -230,3 +230,35 @@ test('Text browser (phone): search results and pages with links', async () => {
     s.close();
   }
 });
+
+test('Phone browser: drives the app\'s hidden web view through the Browse plugin', async () => {
+  const { nativeBrowser } = require('../src/browser-native');
+  const calls = [];
+  const page = { title: 'Cloudpick', url: 'https://cloudpick.sa/', text: 'Your cloud, in Saudi Arabia', items: [{ id: 1, kind: 'link', label: 'Pricing', href: 'https://cloudpick.sa/pricing' }] };
+  const Browse = {
+    async open() { calls.push('open'); },
+    async load({ url }) {
+      calls.push(`load ${url}`);
+      if (url.includes('nowhere')) throw new Error('net::ERR_NAME_NOT_RESOLVED');
+    },
+    async stop() { calls.push('stop'); },
+    async eval({ js }) {
+      if (js.includes('data-najwa-id') && js.includes('items')) return { value: JSON.stringify(page) };
+      if (js.includes('el.click()')) { page.url = 'https://cloudpick.sa/pricing'; page.title = 'Pricing'; return { value: 'true' }; }
+      if (js.includes('readyState')) return { value: JSON.stringify({ url: page.url, ready: 'complete' }) };
+      return { value: 'null' };
+    },
+    async snapshot() { return { data: '/9j/AAA=' }; },
+    async close() { calls.push('close'); }
+  };
+  const b = nativeBrowser(Browse, { doFetch: () => { throw new Error('no network in this test'); } });
+  assert.deepStrictEqual(b.defs.map((d) => d.name), ['web_search', 'open_page', 'click', 'type_text', 'screenshot']);
+  const opened = await b.run('open_page', { url: 'https://cloudpick.sa/' });
+  assert.match(opened.text, /Page: Cloudpick[\s\S]*\[1\] link "Pricing"/);
+  assert.strictEqual(b.describe({ name: 'click', args: { number: 1 } }), 'Clicking "Pricing"');
+  assert.match((await b.run('click', { number: 1 })).text, /Page: Pricing/);
+  assert.strictEqual((await b.run('screenshot', {})).image, 'data:image/jpeg;base64,/9j/AAA=');
+  await assert.rejects(b.run('open_page', { url: 'https://nowhere.example/' }), /Couldn't find that website/);
+  b.close();
+  assert.deepStrictEqual(calls, ['open', 'load https://cloudpick.sa/', 'load https://nowhere.example/', 'stop', 'close']);
+});

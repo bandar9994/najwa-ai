@@ -2235,9 +2235,7 @@ function openSettings(tab = 'general') {
         field('Theme', theme),
         field('How replies appear', replyStyle, 'How a reply shows up while it\'s being written.'),
         check('Read links in my messages: the app opens the page and gives the model its text (not for Hermes, which browses itself)', s, 'readLinks'),
-        check(S.info.mobile
-          ? 'Let models use a browser: search the web and open pages (as text on this phone; a computer\'s models use its browser)'
-          : 'Let models use a browser: search the web, open pages, click, type and take screenshots', s, 'browser'),
+        check('Let models use a browser: search the web, open pages, click, type and take screenshots (models that can use tools)', s, 'browser'),
         check('Press Enter to send (Shift+Enter for a new line)', s, 'sendOnEnter'),
         check('Name new chats automatically with AI', s, 'autoTitle'),
         field('Temperature', bind(h('input', { class: 'input', type: 'number', step: '0.1', min: '0', max: '2', value: s.temperature }), s, 'temperature'),
