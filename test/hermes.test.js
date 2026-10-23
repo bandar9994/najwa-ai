@@ -338,6 +338,16 @@ function fakeHermesRuns({ script = 'drop' } = {}) {
         res.write(`id: 950\ndata: ${JSON.stringify({ event: 'run.completed', run_id: 'run_1', seq: 950, output: 'Removed old caches: 2.4 GB.' })}\n\n`);
         return res.end(': stream closed\n\n');
       }
+      if (script === 'picture') {
+        // Hermes with pictures in the finished answer (the streamed text has the path).
+        res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+        const pic = '![image](data:image/png;base64,iVBORw0KGgo=)';
+        for (const [seq, e] of [
+          { event: 'message.delta', delta: 'MEDIA:/home/me/tv.png\n\nTaken just now.' },
+          { event: 'run.completed', output: `${pic}\n\nTaken just now.` }
+        ].entries()) res.write(`id: ${seq}\ndata: ${JSON.stringify({ ...e, run_id: 'run_1', seq })}\n\n`);
+        return res.end(': stream closed\n\n');
+      }
       if (script === 'failed') {
         res.writeHead(200, { 'Content-Type': 'text/event-stream' });
         res.write(`id: 0\ndata: ${JSON.stringify({ event: 'run.failed', run_id: 'run_1', seq: 0, error: 'Model provider error' })}\n\n`);
@@ -416,6 +426,18 @@ test('Hermes runs: finished while away (status only), failed, and Stop', async (
     const replaced = infos.find((i) => i.kind === 'replace');
     assert.strictEqual(replaced.text, '<think>Look for caches.</think>\n\nRemoved old caches: 2.4 GB.');
     assert.strictEqual(result.text, replaced.text);
+  } finally {
+    h.server.close();
+  }
+
+  h = await fakeHermesRuns({ script: 'picture' });
+  try {
+    const infos = [];
+    const result = await hermes.streamChat({ baseUrl: h.url, apiKey: KEY }, { model: 'hermes-agent', messages: [{ role: 'user', content: 'Screenshot' }] },
+      () => {}, undefined, (info) => infos.push(info));
+    // The finished answer, with the picture inline, replaces the path.
+    assert.strictEqual(result.text, '![image](data:image/png;base64,iVBORw0KGgo=)\n\nTaken just now.');
+    assert.strictEqual(infos.find((i) => i.kind === 'replace').text, result.text);
   } finally {
     h.server.close();
   }

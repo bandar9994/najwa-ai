@@ -759,7 +759,7 @@ function fillContent(container, msg) {
   // While a reply is being written, show it as the reply style setting says
   // (by default a sentence at a time). The finished reply is shown whole.
   const shown = msg.pending ? SpeechText.shownWhileWriting(answer, S.settings.replyStyle) : answer;
-  const body = renderMarkdown(shown);
+  const body = renderMarkdown(SpeechText.mediaNotes(shown));
   if (msg.pending) body.classList.add('typing');
   container.append(...body.childNodes.length ? [body] : []);
   if (msg.pending && !shown.trim() && (thinking == null || done) && !(msg.tools && msg.tools.length)) {

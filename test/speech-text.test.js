@@ -4,7 +4,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
-const { languageOf, speakable, nextChunk, shownWhileWriting } = require('../renderer/speech-text.js');
+const { languageOf, speakable, nextChunk, shownWhileWriting, mediaNotes } = require('../renderer/speech-text.js');
 
 test('languageOf picks the script most letters are in', () => {
   assert.strictEqual(languageOf('مرحبا، كيف حالك؟'), 'ar');
@@ -126,4 +126,14 @@ test('shownWhileWriting: word by word and all at once', () => {
   assert.equal(shownWhileWriting('Hello there. How are', 'words'), 'Hello there. How are');
   assert.equal(shownWhileWriting('Hello there. How are', 'whole'), '');
   assert.equal(shownWhileWriting('Hello there. How are', undefined), 'Hello there.');
+});
+
+test('mediaNotes: Hermes MEDIA: paths become a note with the file name', () => {
+  assert.equal(mediaNotes('MEDIA:/home/me/.hermes/cache/tv_home3.png\n\nTaken just now.'),
+    '🖼 *On the Hermes computer:* `tv_home3.png`\n\nTaken just now.');
+  assert.equal(mediaNotes('See `MEDIA:/tmp/a b.png` and **MEDIA:~/out/report.pdf**.'),
+    'See 🖼 *On the Hermes computer:* `a b.png` and 📎 *On the Hermes computer:* `report.pdf`.');
+  assert.equal(mediaNotes('No media here: MEDIA is a word.'), 'No media here: MEDIA is a word.');
+  // Not read aloud.
+  assert.equal(speakable('MEDIA:/home/me/shot.png\n\nTaken just now.'), 'Taken just now.');
 });

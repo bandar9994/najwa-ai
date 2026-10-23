@@ -613,11 +613,14 @@ const hermesProvider = (doFetch = (...args) => fetch(...args)) => {
       }
       const { output, missed } = await followRun(cfg, runId, w, signal, onInfo);
       const answer = w.answered ? w.text.slice(w.answerAt) : '';
-      if (output && (!w.answered || (missed && output !== answer))) {
-        if (output.startsWith(answer)) {
+      // Pictures come only with the finished answer: its MEDIA: files as
+      // inline images (streamed text has just their paths on Hermes' computer).
+      const pictures = /!\[[^\]]*\]\(data:image\//.test(output);
+      if (output && (!w.answered || ((missed || pictures) && output !== answer))) {
+        if (output.startsWith(answer) && !pictures) {
           w.answer(output.slice(answer.length));
         } else {
-          // Part of the reply was missed while away: use the finished answer.
+          // Part of the reply was missed while away, or it has pictures: use the finished answer.
           w.close();
           w.text = w.text.slice(0, w.answerAt) + output;
           onInfo({ kind: 'replace', text: w.text });

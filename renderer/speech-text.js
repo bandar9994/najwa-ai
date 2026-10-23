@@ -22,9 +22,26 @@
     return ar >= en ? 'ar' : 'en';
   }
 
+  // Hermes Agent marks a picture or file it made with "MEDIA:<path>", a path
+  // on its own computer (its Telegram and other chat apps send the file).
+  // (Like Hermes' own MEDIA_TAG_CLEANUP_RE: a quoted path, or one that ends
+  // in a file extension, so it can have spaces.)
+  const MEDIA_TAG = /[`"'*_]{0,3}MEDIA:\s*(`[^`\n]+?`|"[^"\n]+?"|'[^'\n]+?'|(?:~\/|\/|[A-Za-z]:[\/\\])\S+?(?:[^\S\n]+\S+?)*?\.[A-Za-z0-9]{2,5}(?=[\s`"'*_,;:)\]}]|\.(?:\s|$)|$))[`"'*_]{0,3}/g;
+
+  // MEDIA: tags -> a short note with the file's name (the app can't open
+  // files on Hermes' computer).
+  function mediaNotes(md) {
+    return String(md || '').replace(MEDIA_TAG, (_, path) => {
+      const name = path.replace(/^[`"']|[`"']$/g, '').split(/[\/\\]/).pop();
+      const icon = /\.(png|jpe?g|gif|webp|bmp|svg|heic)$/i.test(name) ? '🖼' : '📎';
+      return `${icon} *On the Hermes computer:* \`${name.replace(/`/g, '')}\``;
+    });
+  }
+
   // Markdown -> text to read aloud.
   function speakable(md) {
     let t = String(md || '');
+    t = t.replace(MEDIA_TAG, ' ');                               // Hermes file paths
     t = t.replace(/```[\s\S]*?(```|$)/g, '\n');                 // code blocks aren't read
     t = t.replace(/<[^>\n]+>/g, ' ');                            // HTML tags
     t = t.replace(/!\[[^\]]*\]\([^)]*\)/g, ' ');                 // pictures
@@ -111,7 +128,7 @@
     return s.slice(0, cut);
   }
 
-  const api = { languageOf, speakable, nextChunk, shownWhileWriting };
+  const api = { languageOf, speakable, nextChunk, shownWhileWriting, mediaNotes };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.SpeechText = api;
 })(typeof window !== 'undefined' ? window : globalThis);
