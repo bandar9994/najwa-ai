@@ -13,11 +13,13 @@ and finish it back at your desk. Or let your phone use your computer's big model
 Your chats, memory and assistants stay in sync, encrypted end to end.
 
 [![Android](https://img.shields.io/badge/Android-3DDC84?logo=android&logoColor=white)](#download)
+[![iPhone](https://img.shields.io/badge/iPhone-000000?logo=apple&logoColor=white)](#download)
 [![Windows](https://img.shields.io/badge/Windows-0078D4?logo=windows&logoColor=white)](#download)
 [![macOS](https://img.shields.io/badge/macOS-000000?logo=apple&logoColor=white)](#download)
 [![Linux](https://img.shields.io/badge/Linux-FCC624?logo=linux&logoColor=black)](#download)
 [![Works offline](https://img.shields.io/badge/works-offline-5b5bd6)](#run-ai-anywhere)
 [![Your phone uses your PC's models](https://img.shields.io/badge/phone-uses%20your%20PC%27s%20models-5b5bd6)](#your-computers-brain-in-your-pocket)
+[![Browses the web](https://img.shields.io/badge/AI-browses%20the%20web-5b5bd6)](#the-web-when-your-ai-needs-it)
 [![Free for personal use](https://img.shields.io/badge/free-for%20personal%20use-5b5bd6)](#license)
 <br>
 [![Works with Hermes Agent](https://img.shields.io/badge/works%20with-Hermes%20Agent-5b5bd6)](#your-hermes-agent-in-a-real-app)
@@ -28,7 +30,7 @@ Your chats, memory and assistants stay in sync, encrypted end to end.
 [![Business license available](https://img.shields.io/badge/business%20license-available-2b2a6e)](#for-businesses)
 [![Support on Ko-fi](https://img.shields.io/badge/support-Ko--fi-ff5e5b?logo=kofi&logoColor=white)](https://ko-fi.com/bandaraltariqi)
 
-**[Download](#download)** · **[Features](#features)** · **[User guide](docs/GUIDE.md)** · **[For businesses](#for-businesses)** · **[Support Najwa AI](#support-balimda)** · **[Website](https://bandar9994.github.io/)** · **[Privacy](PRIVACY.md)**
+**[Download](#download)** · **[Features](#features)** · **[User guide](docs/GUIDE.md)** · **[For businesses](#for-businesses)** · **[Support Najwa AI](#support-najwa-ai)** · **[Website](https://bandar9994.github.io/)** · **[Privacy](PRIVACY.md)**
 
 <br>
 
@@ -88,10 +90,20 @@ Use [Hermes Agent](https://github.com/NousResearch/hermes-agent) from your phone
 
 - **Watch it work.** Every tool Hermes runs shows up as it happens, then folds into "Used 4 tools".
 - **You stay in control.** When Hermes wants to do something risky, you see the exact command and choose **Allow once**, **Allow for this chat**, **Always allow** or **Deny**. Nothing is approved automatically.
-- **On your phone too.** Your phone reaches Hermes through your computer, approvals included, so Hermes never has to be opened to the network.
+- **On your phone too.** Your phone reaches Hermes through your computer, approvals included, so Hermes never has to be opened to the network. Or connect the phone to Hermes directly.
+- **Leave the app, keep the answer.** Hermes keeps working if you switch apps or lock your phone halfway through a reply. When you come back, the reply picks up where it stopped.
 - **Your chats, kept and synced.** Hermes conversations are saved, searchable and synced like any other chat. Hermes keeps its own memory, so Najwa AI's isn't sent unless you turn that on.
 
 Setup takes two minutes: see [Using Hermes Agent](docs/GUIDE.md#using-hermes-agent).
+
+## The web, when your AI needs it
+
+Ask about a website or something new, and your AI can look it up, on your phone and on your computer.
+
+- **A browser for your AI.** Models that can use tools (Claude, OpenAI, and Ollama or LM Studio models with tool support) can search the web, open pages, click, type and take screenshots, then answer from what they found. Each step shows up as it happens ("Opening cloudpick.sa"), and screenshots the model took appear in the chat.
+- **Its own private browser.** It runs hidden inside Najwa AI, separate from your own browser: none of your logins, no downloads, no camera, microphone or location, and a fresh start for every reply.
+- **Links in your messages, read for you.** Paste a link and Najwa AI opens it and gives the page's text to any model, even one that can't browse. A chip under your message shows what it read.
+- **Your choice.** Both can be turned off in Settings → General.
 
 ## Why Najwa AI?
 
@@ -155,7 +167,7 @@ The same chat continues on your phone and your computer, even with a different m
 
 ### A great chat experience
 
-- **Streaming replies** with Stop, Regenerate, and Edit & resend.
+- **Replies that are easy to read.** Text appears a sentence at a time (or word by word, or all at once, as you like), and the page stays still while you read instead of chasing the newest word. Stop, Regenerate, and Edit & resend are always there.
 - **Pictures.** Add a photo or screenshot to a message and ask about it: with Claude, a vision model in Ollama or LM Studio, or on your phone with a vision model and its vision file (mmproj), fully offline.
 - **Thinking models, tidied up.** Models that reason first (Qwen 3, DeepSeek-R1, Claude and others, on your phone, in Ollama or LM Studio, or in the cloud) show a collapsed "Thought process" you can open when you're curious.
 - **Assistants** with their own instructions and their own model. Assistant, Code Buddy and Writing Coach come built in; create as many as you like.
@@ -233,13 +245,19 @@ Only you. Chats are stored on your devices. Sync uploads them encrypted with a k
 <details>
 <summary><b>Which phone do I need?</b></summary>
 
-Any recent Android phone. Small models (0.5B–1.5B) run on most phones; 3B–4B models want 6–8 GB of RAM. Snapdragon phones get GPU acceleration. For bigger models, let your phone use your computer's models.
+Any recent Android phone or iPhone. Small models (0.5B–1.5B) run on most phones; 3B–4B models want 6–8 GB of RAM. Snapdragon phones get GPU acceleration. For bigger models, let your phone use your computer's models.
 </details>
 
 <details>
 <summary><b>Can I use my computer's models from my phone when I'm away from home?</b></summary>
 
 Yes. Install [Tailscale](https://tailscale.com) (free) on the computer and the phone and sign in with the same account. Najwa AI finds the computer over Tailscale by itself. Najwa AI must be open on the computer.
+</details>
+
+<details>
+<summary><b>Can the AI look at a website?</b></summary>
+
+Yes. Paste the link and Najwa AI reads the page for the model. Models that can use tools (Claude, OpenAI, and many Ollama and LM Studio models) can also search the web and browse by themselves, including screenshots to see a page's design. They use a private browser hidden inside Najwa AI, with none of your logins. You can turn both off in Settings → General.
 </details>
 
 <details>

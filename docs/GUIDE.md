@@ -153,6 +153,24 @@ While Hermes works, each tool it runs appears above its answer (for example "�
 
 **On your phone:** turn on **Let my phone use this computer's models** on the computer that has Hermes set up. On the phone, pick **hermes-agent (your computer, Hermes Agent)** under **On your computer**. Hermes stays private on the computer, and approvals work from the phone too. To connect the phone to Hermes directly instead, also set `API_SERVER_HOST=0.0.0.0` in `~/.hermes/.env` (and allow port 8642 through the computer's firewall), and enter `http://<computer IP>:8642/v1` and the key in the phone's Hermes card. Only do this on a network you trust.
 
+**Pictures:** when Hermes makes a picture (a screenshot, a chart), its reply shows "🖼 On the Hermes computer: file.png". Hermes doesn't send the picture itself to apps yet, only its name; Najwa AI shows it as soon as Hermes does.
+
+**Leaving the app:** if you switch apps or lock your phone while Hermes is working, Hermes carries on, and the reply picks up where it stopped when you come back ("Reconnecting to Hermes…").
+
+### Links and the web
+
+**Read links:** paste a link in your message and Najwa AI opens the page and gives its text to the model, with any model. A chip under your message shows what it read ("🔗 Read cloudpick.sa · title"), or why it couldn't. Text only: for the design of a page, use the browser below or attach a screenshot.
+
+**A browser for your AI:** models that can use tools (Claude, OpenAI, and Ollama or LM Studio models with tool support) can search the web, open pages, click, type and take screenshots by themselves. Each step shows above the answer ("🌐 Opening cloudpick.sa"), and screenshots the model took appear in the chat. Try: *"Open cloudpick.sa and tell me what you think of the design."*
+
+- It's a private browser hidden inside Najwa AI, on your computer and on your phone: none of your logins, no downloads, no camera, microphone or location, and a fresh start for every reply. When your phone uses a computer's models, they use the computer's browser.
+- Searches go to DuckDuckGo. Pages are written by others, so models are told not to follow instructions found on them.
+- Turn either off in **Settings → General**: **Read links in my messages** and **Let models use a browser**.
+
+### How replies appear
+
+In **Settings → General → How replies appear**: **A sentence at a time** (the default, easy to read), **Word by word**, or **All at once, when finished**. Either way, the page stays still while a reply is written: your message moves to the top and the reply appears below it. The ↓ button jumps to the end.
+
 ### Using it away from home
 
 To use your computer's models from your phone anywhere (not only on your home Wi-Fi), install [Tailscale](https://tailscale.com) on both the computer and the phone and sign in with the same account. Najwa AI finds the computer over Tailscale by itself.
