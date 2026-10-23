@@ -5,13 +5,24 @@
 package com.bandar9994.balimda;
 
 import android.annotation.SuppressLint;
+import android.app.Presentation;
+import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.graphics.PixelFormat;
+import android.hardware.display.DisplayManager;
+import android.hardware.display.VirtualDisplay;
+import android.media.Image;
+import android.media.ImageReader;
 import android.net.Uri;
 import android.net.http.SslError;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Base64;
+import android.util.DisplayMetrics;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowManager;
 import android.webkit.GeolocationPermissions;
 import android.webkit.PermissionRequest;
 import android.webkit.SslErrorHandler;
@@ -27,6 +38,7 @@ import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import java.io.ByteArrayOutputStream;
+import java.nio.ByteBuffer;
 import org.json.JSONObject;
 import org.json.JSONTokener;
 
@@ -43,12 +55,28 @@ import org.json.JSONTokener;
  * Only web pages (http, https) open in it. It can't download files, open other
  * windows (a link that would opens in it instead), or use the camera,
  * microphone or location.
+ *
+ * It's shown on a screen of its own that nobody sees (a private virtual
+ * display), so the phone draws pages with its graphics chip exactly like
+ * Chrome, and screenshots are what was really drawn. (Drawing a web view into
+ * a picture by hand misses effects like blur and layered parts, so pages
+ * looked broken.) If that screen can't be made, it sits behind the app.
  */
 @CapacitorPlugin(name = "Browse")
 public class BrowsePlugin extends Plugin {
 
+    private static final int WIDTH_DP = 400;
+    private static final int HEIGHT_DP = 860;
+
     private WebView view;
     private PluginCall loading;
+    // Its own screen, and the latest picture drawn on it.
+    private ImageReader reader;
+    private VirtualDisplay screen;
+    private Presentation stage;
+    private Image frame;  // the latest picture drawn on it (kept, converted only for a screenshot)
+    private int frameWidth;
+    private int frameHeight;
 
     private void finishLoad(String error) {
         PluginCall call = loading;
@@ -68,11 +96,87 @@ public class BrowsePlugin extends Plugin {
         return "http".equals(s) || "https".equals(s);
     }
 
+    // Keeps the latest picture drawn on the browser's own screen.
+    private void keepFrame(ImageReader r) {
+        try {
+            Image img = r.acquireLatestImage();
+            if (img == null) return;
+            if (frame != null) frame.close();
+            frame = img;
+        } catch (Exception ignored) {
+            // keep the previous picture
+        }
+    }
+
+    // The kept picture as a bitmap, or null.
+    private Bitmap frameBitmap() {
+        if (frame == null) return null;
+        try {
+            Image.Plane plane = frame.getPlanes()[0];
+            int pixel = plane.getPixelStride();
+            int padding = plane.getRowStride() - pixel * frameWidth;
+            ByteBuffer buffer = plane.getBuffer();
+            buffer.rewind();
+            Bitmap padded = Bitmap.createBitmap(frameWidth + padding / pixel, frameHeight, Bitmap.Config.ARGB_8888);
+            padded.copyPixelsFromBuffer(buffer);
+            if (padding == 0) return padded;
+            Bitmap exact = Bitmap.createBitmap(padded, 0, 0, frameWidth, frameHeight);
+            padded.recycle();
+            return exact;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    // The browser's own screen: returns the context to make the web view in,
+    // or null if this phone can't make one.
+    private Context makeScreen() {
+        try {
+            DisplayMetrics dm = getContext().getResources().getDisplayMetrics();
+            int width = Math.round(WIDTH_DP * dm.density);
+            int height = Math.round(HEIGHT_DP * dm.density);
+            frameWidth = width;
+            frameHeight = height;
+            reader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 3);
+            reader.setOnImageAvailableListener(this::keepFrame, new Handler(Looper.getMainLooper()));
+            DisplayManager displays = (DisplayManager) getContext().getSystemService(Context.DISPLAY_SERVICE);
+            screen = displays.createVirtualDisplay("Najwa AI browser", width, height, dm.densityDpi, reader.getSurface(),
+                DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY);
+            stage = new Presentation(getActivity(), screen.getDisplay());
+            // It never takes the keyboard or touches from the app.
+            stage.getWindow().addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE);
+            return stage.getContext();
+        } catch (Exception e) {
+            removeScreen();
+            return null;
+        }
+    }
+
+    private void removeScreen() {
+        if (stage != null) {
+            try {
+                stage.dismiss();
+            } catch (Exception ignored) {
+                // already gone
+            }
+        }
+        stage = null;
+        if (screen != null) screen.release();
+        screen = null;
+        if (frame != null) frame.close();
+        frame = null;
+        if (reader != null) reader.close();
+        reader = null;
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     private void make() {
         if (view != null) return;
-        WebView w = new WebView(getContext());
+        Context screenContext = makeScreen();
+        WebView w = new WebView(screenContext != null ? screenContext : getContext());
         WebSettings s = w.getSettings();
+        // Look like Chrome: some sites serve apps' web views ("wv") a different page.
+        s.setUserAgentString(s.getUserAgentString().replace("; wv)", ")"));
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
         s.setAllowFileAccess(false);
@@ -117,12 +221,24 @@ public class BrowsePlugin extends Plugin {
                 finishLoad("The website's security certificate isn't trusted, so it wasn't opened.");
             }
         });
-        // Behind the app's own view: drawn and running, but out of sight.
-        float density = getContext().getResources().getDisplayMetrics().density;
-        ViewGroup.LayoutParams size = new ViewGroup.LayoutParams((int) (400 * density), (int) (860 * density));
-        View app = getBridge().getWebView();
-        ViewGroup parent = (ViewGroup) app.getParent();
-        parent.addView(w, 0, size);
+        boolean shown = false;
+        if (stage != null) {
+            try {
+                stage.setContentView(w, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+                stage.show();
+                shown = true;
+            } catch (Exception e) {
+                removeScreen();
+            }
+        }
+        if (!shown) {
+            // Behind the app's own view: drawn and running, but out of sight.
+            float density = getContext().getResources().getDisplayMetrics().density;
+            ViewGroup.LayoutParams size = new ViewGroup.LayoutParams((int) (WIDTH_DP * density), (int) (HEIGHT_DP * density));
+            View app = getBridge().getWebView();
+            ViewGroup parent = (ViewGroup) app.getParent();
+            parent.addView(w, 0, size);
+        }
         w.setFocusable(false);
         w.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
         view = w;
@@ -194,8 +310,12 @@ public class BrowsePlugin extends Plugin {
                 return;
             }
             try {
-                Bitmap full = Bitmap.createBitmap(view.getWidth(), view.getHeight(), Bitmap.Config.ARGB_8888);
-                view.draw(new Canvas(full));
+                // What was really drawn on the browser's own screen.
+                Bitmap full = frameBitmap();
+                if (full == null) {
+                    full = Bitmap.createBitmap(view.getWidth(), view.getHeight(), Bitmap.Config.ARGB_8888);
+                    view.draw(new Canvas(full));
+                }
                 Bitmap small = full;
                 if (full.getWidth() > 1024) {
                     small = Bitmap.createScaledBitmap(full, 1024, Math.round(full.getHeight() * 1024f / full.getWidth()), true);
@@ -215,13 +335,17 @@ public class BrowsePlugin extends Plugin {
 
     private void remove() {
         finishLoad("The browser was closed.");
-        if (view == null) return;
+        if (view == null) {
+            removeScreen();
+            return;
+        }
         WebView w = view;
         view = null;
         w.stopLoading();
         ViewGroup parent = (ViewGroup) w.getParent();
         if (parent != null) parent.removeView(w);
         w.destroy();
+        removeScreen();
     }
 
     @PluginMethod
