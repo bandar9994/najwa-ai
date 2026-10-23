@@ -66,6 +66,7 @@ function desktopEngine() {
   };
 
   return {
+    viewport: '1280×900 computer',
     async load(url, signal) {
       const w = open();
       const stop = () => { if (!w.isDestroyed()) w.webContents.stop(); };
