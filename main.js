@@ -281,7 +281,8 @@ async function runChat(providerId, req, onDelta, signal, onInfo) {
       }
       const mine = req.connectors ? (settings.connectors || []).filter((c) => c.enabled !== false) : [];
       if (mine.length) {
-        const set = await connectors.toolset(mine, { approve: approvals.asker(onInfo, signal), allowed: approvals.allowedFor(req.chatId), signal });
+        const origin = { id: await computerId(), name: computerName(), computer: true };
+        const set = await connectors.toolset(mine, { approve: approvals.asker(onInfo, signal, origin), allowed: approvals.allowedFor(req.chatId), signal });
         sets.push(set);
         system = connectorsNote(system, set);
       }
@@ -334,6 +335,8 @@ const remoteHandlers = {
   },
   // The phone answering an agent's request for permission.
   approve: async (msg) => {
+    // A connector's question this computer asked, answered from the phone.
+    if (approvals.owns(msg.payload)) return approvals.answer(msg.payload);
     await checkShared(msg.provider);
     return approveOn(msg.provider, msg.payload || {});
   }
@@ -478,8 +481,9 @@ function registerIpc() {
   ipcMain.handle('state:get', () => storage.getState());
   ipcMain.handle('state:save', (_e, patch) => storage.saveState(patch));
 
-  ipcMain.handle('app:info', () => ({
+  ipcMain.handle('app:info', async () => ({
     version: app.getVersion(),
+    deviceId: await computerId(),
     dataDir,
     platform: process.platform,
     appName: APP_NAME,

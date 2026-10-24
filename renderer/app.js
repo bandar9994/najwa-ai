@@ -792,7 +792,8 @@ function agentEvent(chat, msg, evt) {
     else if (evt.status !== 'completed') msg.tools.push({ id: evt.id || uid(), emoji: evt.emoji || '', label: String(evt.label || evt.tool || 'tool').slice(0, 200), status: evt.status || 'running' });
   } else if (evt.kind === 'approval') {
     msg.approvals = msg.approvals || [];
-    msg.approvals.push({ runId: evt.runId, approvalId: evt.approvalId || null, title: evt.title ? String(evt.title).slice(0, 200) : null, command: String(evt.command || '').slice(0, 2000), description: String(evt.description || '').slice(0, 500), choices: Array.isArray(evt.choices) && evt.choices.length ? evt.choices : ['once', 'deny'], state: 'pending' });
+    const origin = evt.origin && evt.origin.id ? { id: String(evt.origin.id), name: String(evt.origin.name || 'another device').slice(0, 60), computer: !!evt.origin.computer } : null;
+    msg.approvals.push({ runId: evt.runId, approvalId: evt.approvalId || null, origin, title: evt.title ? String(evt.title).slice(0, 200) : null, command: String(evt.command || '').slice(0, 2000), description: String(evt.description || '').slice(0, 500), choices: Array.isArray(evt.choices) && evt.choices.length ? evt.choices : ['once', 'deny'], state: 'pending' });
     if (S.current !== chat || document.hidden) toast(`${evt.title ? 'A connector' : 'Hermes'} is asking for permission. Open the chat to answer.`, 5000);
   } else if (evt.kind === 'status') {
     msg.agentStatus = String(evt.text).slice(0, 200);
@@ -807,12 +808,31 @@ function agentEvent(chat, msg, evt) {
   saveChatSoon(chat, S.info.mobile ? 5000 : 1500);
 }
 
+// Who can answer a question: the device that asked it (or Hermes, which
+// answers any device), or this phone for a computer that shares its models.
+// Elsewhere (a chat synced while the question waited) the card says where.
+function approvalPlace(a) {
+  if (!a.origin || a.origin.id === S.info.deviceId) return 'here';
+  const computer = a.origin.computer && (S.settings.computers || {})[a.origin.id];
+  if (computer && computer.enabled && api.ai.answerOn) return 'computer';
+  return 'elsewhere';
+}
+
 async function answerApproval(chat, msg, approval, choice) {
   approval.state = 'sending';
   scheduleMessageRender(chat, msg);
   try {
-    await api.ai.approve(msg.model.provider, msg.model.model, { runId: approval.runId, choice, approvalId: approval.approvalId });
-    approval.state = choice;
+    const payload = { runId: approval.runId, choice, approvalId: approval.approvalId };
+    const ok = approvalPlace(approval) === 'computer'
+      ? await api.ai.answerOn(approval.origin.id, payload)
+      : await api.ai.approve(msg.model.provider, msg.model.model, payload);
+    if (ok === false) {
+      // It stopped waiting (the reply ended, or it was answered elsewhere).
+      approval.state = 'expired';
+      toast('That question isn\'t waiting for an answer any more.', 4000);
+    } else {
+      approval.state = choice;
+    }
   } catch (err) {
     approval.state = 'pending';
     toast(`Couldn't send your answer: ${errorText(err)}`, 5000);
@@ -849,7 +869,7 @@ function agentSteps(msg) {
         h('div', { class: 'approval-title', text: a.title ? `${a.title}?` : 'Hermes is asking for permission' }),
         a.description ? h('div', { class: 'approval-why', text: a.description }) : null,
         a.command ? h('pre', { class: 'approval-command', dir: 'ltr', text: a.command }) : null,
-        h('div', { class: 'approval-buttons' },
+        approvalPlace(a) === 'elsewhere' ? h('div', { class: 'approval-elsewhere', text: `Waiting for your answer on ${a.origin.name}.` }) : h('div', { class: 'approval-buttons' },
           ...(a.choices || ['once', 'deny']).filter((c) => APPROVAL_LABELS[c]).map((c) => h('button', {
             class: `btn ${c === 'deny' ? 'danger' : c === 'once' ? 'primary' : ''}`,
             text: APPROVAL_LABELS[c],

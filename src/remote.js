@@ -341,7 +341,17 @@ function remoteComputers({ getKey, getComputers, fetch = globalThis.fetch, probe
     return call(await locate(target.computer), 'approve', { provider: target.provider, payload }, { timeoutMs: 15000 });
   }
 
-  return { listModels, streamChat, approve, locate, call };
+  // Answers a question a computer's connector asked, from a chat synced from
+  // it (or a reply written there for this phone).
+  async function answerOn(computerId, payload) {
+    const computer = ((await getComputers()) || {})[computerId];
+    if (!computer || !computer.enabled || !Array.isArray(computer.addrs)) {
+      throw new RemoteError('That computer isn\'t sharing its models right now, so answer there.');
+    }
+    return call(await locate(computer), 'approve', { provider: null, payload }, { timeoutMs: 15000 });
+  }
+
+  return { listModels, streamChat, approve, answerOn, locate, call };
 }
 
 module.exports = { PORT, PATH, MAX_SKEW_MS, RemoteError, linkKey, lock, unlock, lines, remoteComputers, modelName };

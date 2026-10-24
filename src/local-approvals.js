@@ -22,8 +22,10 @@ function localApprovals() {
       if (!byChat.has(chatId)) byChat.set(chatId, new Set());
       return byChat.get(chatId);
     },
-    // An approve() for src/connectors.js, asking through onInfo.
-    asker(onInfo, signal) {
+    // An approve() for src/connectors.js, asking through onInfo. `origin`
+    // ({ id, name, computer }) says which device asked, so a chat synced to
+    // another device shows where to answer (or answers through the computer).
+    asker(onInfo, signal, origin = null) {
       return (a) => new Promise((resolve) => {
         const id = `local:${Date.now().toString(36)}-${++n}`;
         const done = (choice) => {
@@ -35,7 +37,7 @@ function localApprovals() {
         const timer = setTimeout(() => done('deny'), WAIT_MS);
         pending.set(id, done);
         if (signal) signal.addEventListener('abort', () => done('deny'), { once: true });
-        onInfo({ kind: 'approval', runId: id, approvalId: null, title: a.title, command: a.command, description: a.description, choices: ['once', 'session', 'deny'] });
+        onInfo({ kind: 'approval', runId: id, approvalId: null, title: a.title, command: a.command, description: a.description, choices: ['once', 'session', 'deny'], origin });
       });
     },
     owns: (payload) => !!payload && typeof payload.runId === 'string' && payload.runId.startsWith('local:'),

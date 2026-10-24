@@ -694,6 +694,7 @@ textarea.input { resize: vertical; }
 .approval-title { font-weight: 600; margin-bottom: 4px; }
 .approval-why { font-size: 14px; color: var(--text-dim); margin-bottom: 6px; }
 .approval-command { margin: 0 0 8px; padding: 8px 10px; border-radius: 6px; background: var(--bg-code); font-size: 12.5px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.approval-elsewhere { font-size: 13px; color: var(--text-dim); margin-top: 8px; }
 .approval-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
 .approval-done { font-size: 13px; color: var(--text-dim); display: flex; gap: 6px; align-items: baseline; }
 .approval-done .approval-label { white-space: nowrap; flex-shrink: 0; }
