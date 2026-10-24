@@ -149,6 +149,13 @@ function renderMarkdown(text) {
   // Arabic (and other right-to-left) paragraphs read right to left, each on
   // its own, so a mixed reply lays out naturally. Code stays left to right.
   for (const block of wrap.querySelectorAll('p, li, h1, h2, h3, h4, h5, h6, blockquote, td, th')) block.setAttribute('dir', 'auto');
+  // A list goes the way of its first letter, so an Arabic list keeps the room
+  // for its numbers and bullets on the right. ("auto" can't do it: it skips
+  // the items, which have their own direction.)
+  for (const list of wrap.querySelectorAll('ul, ol')) {
+    const first = /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]|[A-Za-z\u00C0-\u02AF\u0370-\u052F]/.exec(list.textContent);
+    list.setAttribute('dir', first && /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/.test(first[0]) ? 'rtl' : 'ltr');
+  }
   // Pictures from the internet become links the reader can choose to open.
   for (const img of wrap.querySelectorAll('img')) {
     const inline = img.getAttribute('data-inline');
