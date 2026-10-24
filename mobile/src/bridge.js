@@ -14,7 +14,10 @@ import { Storage } from '../../src/storage.js';
 import { PROVIDERS, hermesProvider, normalizeMessages } from '../../src/providers.js';
 import { makeNativeFetch } from '../../src/native-fetch.js';
 import { readLink } from '../../src/link-reader.js';
-import { chatWithTools, TOOL_KINDS } from '../../src/tool-chat.js';
+import { chatWithTools, combineTools, TOOL_KINDS } from '../../src/tool-chat.js';
+import { connectorHub, connectorsNote, urlOf } from '../../src/connectors.js';
+import { httpTransport } from '../../src/mcp-client.js';
+import { localApprovals } from '../../src/local-approvals.js';
 import { textBrowser, browsingNote } from '../../src/browser-tools.js';
 import { nativeBrowser } from '../../src/browser-native.js';
 import { Sync, SyncError } from '../../src/sync.js';
@@ -172,6 +175,14 @@ const Browse = isNative && Capacitor.isPluginAvailable('Browse') ? registerPlugi
 const webFetch = nativeFetch || ((...args) => fetch(...args));
 const modelBrowser = () => (Browse ? nativeBrowser(Browse, { doFetch: webFetch }) : textBrowser(webFetch));
 
+// Connectors on the internet (Settings → Connectors). Programs on a computer
+// only run in the desktop app.
+const connectorsHub = connectorHub({
+  transportFor: (c) => httpTransport({ url: urlOf(c), headers: c.token ? { Authorization: `Bearer ${c.token}` } : {}, doFetch: webFetch })
+});
+const approvals = localApprovals();
+const phoneConnectors = (list) => (list || []).filter((c) => c.enabled !== false && c.kind !== 'command');
+
 const providers = {
   onDevice: {
     label: 'On this device (offline)',
@@ -322,6 +333,11 @@ window.balimda = {
   web: {
     read: (url) => readLink(url, nativeFetch || ((...args) => fetch(...args)))
   },
+  connectors: {
+    test: (c) => (c && c.kind === 'command'
+      ? Promise.resolve({ ok: false, error: 'Programs only run in the desktop app.' })
+      : connectorsHub.test(c))
+  },
   ai: {
     async models(providerId) {
       const provider = providers[providerId];
@@ -344,8 +360,11 @@ window.balimda = {
           maxTokens: req.maxTokens,
           think: req.think,
           background: !!req.background,
-          // "Let models use a browser": a computer's models use its own browser.
-          browse: !!req.browse
+          // "Let models use a browser" and connectors: a computer's models use
+          // the computer's own.
+          browse: !!req.browse,
+          connectors: !!req.connectors,
+          chatId: req.chatId
         };
         const onDelta = (text) => {
           for (const cb of aiListeners) cb({ requestId: req.requestId, type: 'delta', text });
@@ -353,16 +372,32 @@ window.balimda = {
         const onInfo = (info) => {
           for (const cb of aiListeners) cb({ requestId: req.requestId, type: 'info', ...info });
         };
-        if (req.browse && TOOL_KINDS[req.provider]) {
-          const browser = modelBrowser();
+        if (TOOL_KINDS[req.provider] && (req.browse || req.connectors)) {
+          const sets = [];
+          let system = request.system;
+          const browser = req.browse ? modelBrowser() : null;
           try {
-            const result = await chatWithTools({
-              kind: TOOL_KINDS[req.provider], cfg, req: { ...request, system: browsingNote(request.system, !!Browse) },
-              onDelta, signal: controller.signal, onInfo, tools: browser
-            });
-            if (!result.fallback) return { ok: true, ...result };
+            if (browser) {
+              sets.push(browser);
+              system = browsingNote(system, !!Browse);
+            }
+            const mine = req.connectors ? phoneConnectors((await (await ready).getSettings()).connectors) : [];
+            if (mine.length) {
+              const set = await connectorsHub.toolset(mine, {
+                approve: approvals.asker(onInfo, controller.signal), allowed: approvals.allowedFor(req.chatId), signal: controller.signal
+              });
+              sets.push(set);
+              system = connectorsNote(system, set);
+            }
+            const tools = combineTools(sets);
+            if (tools.defs.length) {
+              const result = await chatWithTools({
+                kind: TOOL_KINDS[req.provider], cfg, req: { ...request, system }, onDelta, signal: controller.signal, onInfo, tools
+              });
+              if (!result.fallback) return { ok: true, ...result };
+            }
           } finally {
-            browser.close();
+            if (browser) browser.close();
           }
         }
         const result = await provider.impl.streamChat(cfg, request, onDelta, controller.signal, onInfo);
@@ -382,6 +417,7 @@ window.balimda = {
     // through the computer the phone is using.
     async approve(providerId, model, payload) {
       if (providerId === 'computer') return computers.approve(model, payload);
+      if (approvals.owns(payload)) return approvals.answer(payload);
       const provider = providers[providerId];
       if (!provider || !provider.impl.approve) throw new Error('This model can\'t take approvals.');
       const cfg = (await (await ready).getSettings()).providers[providerId] || {};

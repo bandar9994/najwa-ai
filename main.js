@@ -14,7 +14,11 @@ const { linkKey } = require('./src/remote');
 const { startRemoteServer, localAddresses } = require('./src/remote-server');
 const { createVoice } = require('./src/voice-desktop');
 const { readLink } = require('./src/link-reader');
-const { chatWithTools, TOOL_KINDS } = require('./src/tool-chat');
+const { chatWithTools, combineTools, TOOL_KINDS } = require('./src/tool-chat');
+const { connectorHub, connectorsNote, urlOf } = require('./src/connectors');
+const { httpTransport } = require('./src/mcp-client');
+const { stdioTransport } = require('./src/mcp-stdio');
+const { localApprovals } = require('./src/local-approvals');
 const { desktopBrowser } = require('./src/browser-desktop');
 const { browsingNote } = require('./src/browser-tools');
 const os = require('os');
@@ -240,10 +244,21 @@ async function enabledProviders(settings) {
   });
 }
 
+// Connectors (Settings → Connectors): their tools, kept connected between
+// replies; and the user's answers when one wants to change something.
+const connectors = connectorHub({
+  transportFor: (c) => (c.kind === 'command'
+    ? stdioTransport({ command: c.command, args: c.args || [], env: c.env || {} })
+    : httpTransport({ url: urlOf(c), headers: c.token ? { Authorization: `Bearer ${c.token}` } : {} })),
+  version: app.getVersion()
+});
+const approvals = localApprovals();
+
 async function runChat(providerId, req, onDelta, signal, onInfo) {
   const provider = PROVIDERS[providerId];
   if (!provider) throw new Error(`Unknown provider: ${providerId}`);
-  const cfg = (await storage.getSettings()).providers[providerId] || {};
+  const settings = await storage.getSettings();
+  const cfg = settings.providers[providerId] || {};
   const request = {
     model: req.model,
     system: req.system,
@@ -252,17 +267,31 @@ async function runChat(providerId, req, onDelta, signal, onInfo) {
     maxTokens: req.maxTokens,
     think: req.think
   };
-  // "Let models use a browser": this computer's hidden browser (also for the
-  // phone, when it uses this computer's models).
-  if (req.browse && TOOL_KINDS[providerId]) {
-    const browser = desktopBrowser();
+  // Tools for models that can use them (also for the phone, when it uses this
+  // computer's models): "Let models use a browser" (this computer's hidden
+  // browser), and this computer's connectors.
+  if (TOOL_KINDS[providerId] && (req.browse || req.connectors)) {
+    const sets = [];
+    let system = request.system;
+    const browser = req.browse ? desktopBrowser() : null;
     try {
-      const result = await chatWithTools({
-        kind: TOOL_KINDS[providerId], cfg, req: { ...request, system: browsingNote(request.system, true) }, onDelta, signal, onInfo, tools: browser
-      });
-      if (!result.fallback) return result;
+      if (browser) {
+        sets.push(browser);
+        system = browsingNote(system, true);
+      }
+      const mine = req.connectors ? (settings.connectors || []).filter((c) => c.enabled !== false) : [];
+      if (mine.length) {
+        const set = await connectors.toolset(mine, { approve: approvals.asker(onInfo, signal), allowed: approvals.allowedFor(req.chatId), signal });
+        sets.push(set);
+        system = connectorsNote(system, set);
+      }
+      const tools = combineTools(sets);
+      if (tools.defs.length) {
+        const result = await chatWithTools({ kind: TOOL_KINDS[providerId], cfg, req: { ...request, system }, onDelta, signal, onInfo, tools });
+        if (!result.fallback) return result;
+      }
     } finally {
-      browser.close();
+      if (browser) browser.close();
     }
   }
   return provider.impl.streamChat(cfg, request, onDelta, signal, onInfo);
@@ -275,6 +304,8 @@ async function checkShared(providerId) {
 }
 
 async function approveOn(providerId, payload) {
+  // A connector's question, asked by this computer.
+  if (approvals.owns(payload)) return approvals.answer(payload);
   const provider = PROVIDERS[providerId];
   if (!provider || !provider.impl.approve) throw new Error('This model can\'t take approvals.');
   const cfg = (await storage.getSettings()).providers[providerId] || {};
@@ -546,6 +577,9 @@ function registerIpc() {
 
   // "Read links": a page's text for the model (src/link-reader.js).
   ipcMain.handle('web:read', (_e, url) => readLink(url));
+
+  // Settings → Connectors: "Test" connects and lists the tools.
+  ipcMain.handle('connectors:test', (_e, c) => connectors.test(c));
 
   ipcMain.handle('ai:approve', (_e, providerId, _model, payload) => approveOn(providerId, payload));
 

@@ -792,8 +792,8 @@ function agentEvent(chat, msg, evt) {
     else if (evt.status !== 'completed') msg.tools.push({ id: evt.id || uid(), emoji: evt.emoji || '', label: String(evt.label || evt.tool || 'tool').slice(0, 200), status: evt.status || 'running' });
   } else if (evt.kind === 'approval') {
     msg.approvals = msg.approvals || [];
-    msg.approvals.push({ runId: evt.runId, approvalId: evt.approvalId || null, command: String(evt.command || '').slice(0, 2000), description: String(evt.description || '').slice(0, 500), choices: Array.isArray(evt.choices) && evt.choices.length ? evt.choices : ['once', 'deny'], state: 'pending' });
-    if (S.current !== chat || document.hidden) toast('Hermes is asking for permission. Open the chat to answer.', 5000);
+    msg.approvals.push({ runId: evt.runId, approvalId: evt.approvalId || null, title: evt.title ? String(evt.title).slice(0, 200) : null, command: String(evt.command || '').slice(0, 2000), description: String(evt.description || '').slice(0, 500), choices: Array.isArray(evt.choices) && evt.choices.length ? evt.choices : ['once', 'deny'], state: 'pending' });
+    if (S.current !== chat || document.hidden) toast(`${evt.title ? 'A connector' : 'Hermes'} is asking for permission. Open the chat to answer.`, 5000);
   } else if (evt.kind === 'status') {
     msg.agentStatus = String(evt.text).slice(0, 200);
   } else if (evt.kind === 'shot' && /^data:image\//.test(evt.src || '')) {
@@ -846,7 +846,7 @@ function agentSteps(msg) {
   for (const a of approvals) {
     if (a.state === 'pending' || a.state === 'sending') {
       wrap.append(h('div', { class: 'approval' },
-        h('div', { class: 'approval-title', text: 'Hermes is asking for permission' }),
+        h('div', { class: 'approval-title', text: a.title ? `${a.title}?` : 'Hermes is asking for permission' }),
         a.description ? h('div', { class: 'approval-why', text: a.description }) : null,
         a.command ? h('pre', { class: 'approval-command', dir: 'ltr', text: a.command }) : null,
         h('div', { class: 'approval-buttons' },
@@ -1588,7 +1588,8 @@ const readsLinks = (model) => S.settings.readLinks !== false && !!api.web && !!m
 // "Let models use a browser": search, open pages, and on a computer click, type
 // and take screenshots (src/browser-tools.js). Not for agents (they have their
 // own) or the phone's own models (they can't use tools).
-const browses = (model) => S.settings.browser !== false && !!model && !isAgent(model) && model.provider !== 'onDevice';
+const usesTools = (model) => !!model && !isAgent(model) && model.provider !== 'onDevice';
+const browses = (model) => S.settings.browser !== false && usesTools(model);
 
 // What the model is told about the pages read for a message.
 function linkContext(links, full, model) {
@@ -1734,11 +1735,21 @@ async function runCompletion(chat) {
     messages: history,
     temperature: S.settings.temperature === '' ? undefined : Number(S.settings.temperature),
     maxTokens: Number(S.settings.maxTokens) || 0,
-    browse: browses(model)
+    browse: browses(model),
+    // Connectors (Settings → Connectors) where the reply is written: this
+    // device's, or a computer's when its models are used.
+    connectors: usesTools(model),
+    chatId: chat.id
   });
 
   S.requests.delete(requestId);
   clearTimeout(waitTimer);
+  // On a computer, "finished" can arrive before the last bits of text (they
+  // travel separately): add any ending that hasn't arrived from the full reply.
+  if (res.ok && !res.aborted && typeof res.text === 'string' && res.text.length > msg.content.length && res.text.startsWith(msg.content)) {
+    msg.content = res.text;
+    voiceReplyUpdated(msg);
+  }
   msg.pending = false;
   for (const a of msg.approvals || []) if (a.state === 'pending' || a.state === 'sending') a.state = 'expired';
   for (const t of msg.tools || []) if (t.status === 'running') t.status = res.ok && !res.aborted ? 'completed' : 'stopped';
@@ -2190,6 +2201,7 @@ function openSettings(tab = 'general') {
     ['providers', 'Models & providers'],
     ['assistants', 'Assistants'],
     ['memory', 'Memory'],
+    ...(api.connectors ? [['connectors', 'Connectors']] : []),
     ...(api.voice ? [['voice', 'Voice']] : []),
     ...(api.sync ? [['sync', 'Sync']] : []),
     ['data', 'Data & backup'],
@@ -2371,6 +2383,77 @@ function openSettings(tab = 'general') {
         check('Look through my earlier chats for relevant details', s, 'recallChats'),
         h('div', { class: 'help', style: 'margin: -4px 0 14px 26px', text: 'Before each reply, the best-matching bits of your other chats are given to the model (a little less for phone models, to stay fast). Replies that used them say so underneath, with links to those chats.' })
       ];
+    },
+
+    // Services models can use through their tools (src/connectors.js).
+    connectors() {
+      const box = h('div');
+      s.connectors = Array.isArray(s.connectors) ? s.connectors : [];
+      const GITHUB_TOKEN_URL = 'https://github.com/settings/personal-access-tokens/new';
+      const lines = (v) => String(v || '').split('\n').map((x) => x.trim()).filter(Boolean);
+      const draw = () => {
+        const cards = s.connectors.map((c, i) => {
+          const status = h('span', { class: 'status', text: c.enabled === false ? 'off' : '' });
+          const test = h('button', {
+            class: 'btn',
+            text: 'Test',
+            onclick: async () => {
+              status.textContent = 'Connecting…';
+              status.className = 'status';
+              await api.settings.save(S.settings);
+              const r = await api.connectors.test(c).catch((err) => ({ ok: false, error: errorText(err) }));
+              status.textContent = r.ok ? `Connected · ${r.tools.length} tool${r.tools.length === 1 ? '' : 's'}` : r.error;
+              status.className = `status ${r.ok ? 'ok' : 'bad'}`;
+            }
+          });
+          const remove = h('button', {
+            class: 'btn danger',
+            text: 'Remove',
+            onclick: async () => {
+              if (!(await confirmBox(`Remove the connector "${c.name}"? Its token is deleted from this device.`))) return;
+              s.connectors.splice(i, 1);
+              changed();
+              draw();
+            }
+          });
+          const token = c.kind !== 'command' ? field(c.kind === 'github' ? 'GitHub token' : 'Token (optional)',
+            bind(h('input', { class: 'input', type: 'password', value: c.token || '', placeholder: c.kind === 'github' ? 'github_pat_…' : 'Sent as "Authorization: Bearer …"', autocomplete: 'off' }), c, 'token', (v) => v.trim()),
+            c.kind === 'github' ? 'Kept on this device (encrypted on computers) and never synced.' : null) : null;
+          return h('div', { class: 'provider-card' },
+            h('h4', {}, `${c.kind === 'github' ? '🐙' : c.kind === 'command' ? '🧩' : '🔌'} ${c.name}`, status),
+            check('Enabled', c, 'enabled'),
+            c.kind === 'github' ? h('div', { class: 'help' },
+              'Make a fine-grained token: choose the repositories Najwa AI may use, then the permissions it needs, e.g. Contents, Issues and Pull requests (read and write), Actions and Metadata (read). ',
+              h('a', { href: GITHUB_TOKEN_URL, target: '_blank', rel: 'noopener', text: 'Create a token on GitHub' })) : null,
+            c.kind !== 'github' ? field('Name', bind(h('input', { class: 'input', value: c.name }), c, 'name', (v) => v.trim() || 'Connector')) : null,
+            c.kind === 'url' ? field('Address', bind(h('input', { class: 'input', value: c.url || '', placeholder: 'https://example.com/mcp' }), c, 'url', (v) => v.trim()),
+              'An MCP server on the internet ("Streamable HTTP").') : null,
+            c.kind === 'command' ? field('Command', bind(h('input', { class: 'input', value: c.command || '', placeholder: 'npx' }), c, 'command', (v) => v.trim())) : null,
+            c.kind === 'command' ? field('Arguments (one per line)', bind(h('textarea', { class: 'input', rows: 3, placeholder: '-y\n@modelcontextprotocol/server-filesystem\n/Users/me/Documents' }, (c.args || []).join('\n')), c, 'args', lines)) : null,
+            c.kind === 'command' ? field('Environment (NAME=value, one per line)', bind(h('textarea', { class: 'input', rows: 2 }, Object.entries(c.env || {}).map(([k, v]) => `${k}=${v}`).join('\n')), c, 'env',
+              (v) => Object.fromEntries(lines(v).map((l) => [l.split('=')[0].trim(), l.split('=').slice(1).join('=')]).filter(([k]) => k))),
+            'A program on this computer that speaks MCP. Najwa AI starts it when a model needs it.') : null,
+            token,
+            h('div', { class: 'field-row' }, test, remove));
+        });
+        const add = (c) => {
+          s.connectors.push({ id: uid(), enabled: true, ...c });
+          changed();
+          draw();
+        };
+        box.replaceChildren(
+          h('p', { class: 'help', text: 'Let models that can use tools (Claude, OpenAI, and Ollama or LM Studio models with tool support) work with your services. Reading happens by itself; anything that changes something (a commit, a pull request, an issue, a comment…) waits for you to tap Allow in the chat.' }),
+          ...cards,
+          h('div', { class: 'field-row' },
+            s.connectors.some((c) => c.kind === 'github') ? null : h('button', { class: 'btn primary', text: '＋ Add GitHub', onclick: () => add({ kind: 'github', name: 'GitHub' }) }),
+            h('button', { class: 'btn', text: '＋ Add by address', onclick: () => add({ kind: 'url', name: 'Connector', url: '' }) }),
+            S.info.mobile ? null : h('button', { class: 'btn', text: '＋ Add a program on this computer', onclick: () => add({ kind: 'command', name: 'Local connector', command: '', args: [] }) })),
+          h('p', { class: 'help', text: S.info.mobile
+            ? 'Connectors here are for this phone\'s models. When the phone uses a computer\'s models, the computer\'s connectors are used.'
+            : 'Connectors here are also used when your phone uses this computer\'s models.' }));
+      };
+      draw();
+      return [box];
     },
 
     voice() {

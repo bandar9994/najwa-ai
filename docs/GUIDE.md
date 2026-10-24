@@ -167,6 +167,23 @@ While Hermes works, each tool it runs appears above its answer (for example "�
 - Searches go to DuckDuckGo. Pages are written by others, so models are told not to follow instructions found on them.
 - Turn either off in **Settings → General**: **Read links in my messages** and **Let models use a browser**.
 
+### Connectors (GitHub and more)
+
+Connectors let models that can use tools work with your services. Open **Settings → Connectors**.
+
+**GitHub:**
+1. Tap **Add GitHub**, then **Create a token on GitHub**.
+2. On GitHub, give the token a name and an expiry date. Under **Repository access**, choose **Only select repositories** and pick the ones Najwa AI may use.
+3. Under **Permissions**, give it what you want the AI to do. For example: **Contents**, **Issues** and **Pull requests** set to *Read and write*, and **Actions** and **Metadata** set to *Read-only*. For looking only, choose *Read-only* everywhere.
+4. Create the token, copy it (it starts with `github_pat_`), paste it into Najwa AI and tap **Test**. You should see "Connected · … tools".
+5. Pick a model that can use tools and ask, for example: *"List the open issues in najwa-ai"* or *"Read src/link-reader.js and explain it"*.
+
+Each step shows above the answer ("GitHub: Get file contents README.md"). When the AI wants to change something, you see exactly what it will do, with **Allow once**, **Allow for this chat** or **Deny**. Nothing is approved automatically.
+
+**Other connectors:** **Add by address** for an MCP server on the internet (with a token if it needs one). On a computer, **Add a program on this computer** runs a local MCP server, for example `npx` with the arguments `-y`, `@modelcontextprotocol/server-filesystem` and a folder.
+
+Tokens stay on the device (encrypted on computers) and aren't synced. When your phone uses a computer's models, the computer's connectors are used.
+
 ### How replies appear
 
 In **Settings → General → How replies appear**: **A sentence at a time** (the default, easy to read), **Word by word**, or **All at once, when finished**. Either way, the page stays still while a reply is written: your message moves to the top and the reply appears below it. The ↓ button jumps to the end.
