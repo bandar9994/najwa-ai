@@ -78,25 +78,22 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # The version is in the release's title (the app's versionName,
+          # 1.0.<run number>): app stores that track releases, like Orion Store
+          # and Obtainium, read it from there.
+          VERSION="1.0.${GITHUB_RUN_NUMBER}"
+          TITLE="Najwa AI for Android ${VERSION}"
           if ! gh release view android-latest >/dev/null 2>&1; then
             gh release create android-latest --prerelease --target "$GITHUB_SHA" \
-              --title "Najwa AI for Android (latest build)" \
+              --title "$TITLE" \
               --notes "Newest Android build. Download Najwa-AI-android.apk and open it on your phone; it installs over the previous version and keeps your chats."
           fi
           gh release upload android-latest Najwa-AI-android.apk --clobber
           gh release delete-asset android-latest Pal-android.apk --yes 2>/dev/null || true
-          # Files from before the app was renamed (Balimda -> Najwa AI).
-          gh release view android-latest --json assets --jq '.assets[].name' | { grep -E '^Balimda-' || true; } | while read -r old; do
+          # Files from before the app was renamed (Balimda -> Najwa AI), and the
+          # versioned copies earlier builds added (the title has the version now):
+          # one APK per release.
+          gh release view android-latest --json assets --jq '.assets[].name' | { grep -E '^Balimda-|^Najwa-AI-v[0-9.]+\.apk$' || true; } | while read -r old; do
             gh release delete-asset android-latest "$old" --yes || true
           done
-          # The same APK with its version in the name (the app's versionName,
-          # 1.0.<run number>), for app stores that track releases, like Orion
-          # Store and Obtainium: they read the version from the file name.
-          # Older copies are removed, so the release keeps one.
-          VERSIONED="Najwa-AI-v1.0.${GITHUB_RUN_NUMBER}.apk"
-          cp Najwa-AI-android.apk "$VERSIONED"
-          gh release upload android-latest "$VERSIONED" --clobber
-          gh release view android-latest --json assets --jq '.assets[].name' | grep -E '^Najwa-AI-v[0-9.]+\.apk$' | grep -vxF "$VERSIONED" | while read -r old; do
-            gh release delete-asset android-latest "$old" --yes || true
-          done
-          gh release edit android-latest --title "Najwa AI for Android (latest build)" --notes "Newest Android build (from ${GITHUB_SHA::7}, $(date -u '+%Y-%m-%d %H:%M UTC')). Download Najwa-AI-android.apk and open it on your phone; it installs over the previous version and keeps your chats."
+          gh release edit android-latest --title "$TITLE" --notes "Najwa AI ${VERSION} for Android (from ${GITHUB_SHA::7}, $(date -u '+%Y-%m-%d %H:%M UTC')). Download Najwa-AI-android.apk and open it on your phone; it installs over the previous version and keeps your chats."
