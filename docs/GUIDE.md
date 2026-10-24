@@ -184,6 +184,8 @@ Each step shows above the answer ("GitHub: Get file contents README.md"). When t
 
 Tokens stay on the device (encrypted on computers) and aren't synced. When your phone uses a computer's models, the computer's connectors are used.
 
+**On your other devices:** connectors and tokens are set up on each device; chats sync as usual, with each step and your answers. A question is answered on the device that asked it. If a computer asks while you're away, your phone can answer it too (the computer must be sharing its models: **Let my phone use this computer's models**). On other devices the card says where it's waiting, for example "Waiting for your answer on Desk".
+
 ### How replies appear
 
 In **Settings → General → How replies appear**: **A sentence at a time** (the default, easy to read), **Word by word**, or **All at once, when finished**. Either way, the page stays still while a reply is written: your message moves to the top and the reply appears below it. The ↓ button jumps to the end.

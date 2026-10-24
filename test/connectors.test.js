@@ -175,3 +175,42 @@ test('Connectors: tools for the model, read-only ones run freely, others wait fo
     gh.server.close();
   }
 });
+
+test('A question a computer\'s connector asked can be answered from the phone, over the computer link', async () => {
+  const { localApprovals } = require('../src/local-approvals');
+  const { linkKey, remoteComputers } = require('../src/remote');
+  const { startRemoteServer } = require('../src/remote-server');
+  const { toBase64 } = require('../src/sync');
+  const syncKey = toBase64(globalThis.crypto.getRandomValues(new Uint8Array(32)));
+  // The computer: a connector asks, as main.js wires it (approve handler first
+  // tries the computer's own questions).
+  const approvals = localApprovals();
+  const infos = [];
+  const origin = { id: 'desk', name: 'Desk', computer: true };
+  const pc = await startRemoteServer({
+    port: 0,
+    host: '127.0.0.1',
+    getKey: async () => linkKey(syncKey),
+    handlers: {
+      hello: async () => ({ app: 'balimda', name: 'Desk' }),
+      approve: async (msg) => (approvals.owns(msg.payload) ? approvals.answer(msg.payload) : false)
+    }
+  });
+  try {
+    const asked = approvals.asker((i) => infos.push(i), undefined, origin)({ title: 'GitHub: Open new pull request', command: 'GitHub → create_pull_request', description: 'Create a PR.' });
+    const q = infos[0];
+    assert.deepStrictEqual(q.origin, origin);
+    assert.match(q.runId, /^local:/);
+    // The phone (with a chat synced from the computer) answers through the link.
+    const phone = remoteComputers({ getKey: async () => syncKey, getComputers: async () => ({ desk: { id: 'desk', name: 'Desk', addrs: ['127.0.0.1'], port: pc.port, enabled: true } }) });
+    assert.strictEqual(await phone.answerOn('desk', { runId: q.runId, choice: 'once' }), true);
+    assert.strictEqual(await asked, 'once');
+    // Too late: the question isn't waiting any more.
+    assert.strictEqual(await phone.answerOn('desk', { runId: q.runId, choice: 'deny' }), false);
+    // A computer that isn't sharing.
+    const off = remoteComputers({ getKey: async () => syncKey, getComputers: async () => ({ desk: { id: 'desk', name: 'Desk', addrs: ['127.0.0.1'], port: pc.port, enabled: false } }) });
+    await assert.rejects(off.answerOn('desk', { runId: q.runId, choice: 'once' }), /isn't sharing/);
+  } finally {
+    await pc.close();
+  }
+});

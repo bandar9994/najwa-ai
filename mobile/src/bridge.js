@@ -181,6 +181,16 @@ const connectorsHub = connectorHub({
   transportFor: (c) => httpTransport({ url: urlOf(c), headers: c.token ? { Authorization: `Bearer ${c.token}` } : {}, doFetch: webFetch })
 });
 const approvals = localApprovals();
+// This phone, for questions its connectors ask (see src/local-approvals.js).
+async function phoneId() {
+  const storage = await ready;
+  const state = await storage.getState();
+  if (state.deviceId) return state.deviceId;
+  const id = globalThis.crypto.randomUUID();
+  await storage.saveState({ deviceId: id });
+  return id;
+}
+const phoneOrigin = async () => ({ id: await phoneId(), name: `your ${Capacitor.getPlatform() === 'ios' ? 'iPhone' : 'phone'}`, computer: false });
 const phoneConnectors = (list) => (list || []).filter((c) => c.enabled !== false && c.kind !== 'command');
 
 const providers = {
@@ -310,6 +320,7 @@ window.balimda = {
       }
       return {
         version,
+        deviceId: await phoneId(),
         dataDir: 'Private app storage on this phone',
         platform: Capacitor.getPlatform(),
         appName: 'Najwa AI',
@@ -384,7 +395,7 @@ window.balimda = {
             const mine = req.connectors ? phoneConnectors((await (await ready).getSettings()).connectors) : [];
             if (mine.length) {
               const set = await connectorsHub.toolset(mine, {
-                approve: approvals.asker(onInfo, controller.signal), allowed: approvals.allowedFor(req.chatId), signal: controller.signal
+                approve: approvals.asker(onInfo, controller.signal, await phoneOrigin()), allowed: approvals.allowedFor(req.chatId), signal: controller.signal
               });
               sets.push(set);
               system = connectorsNote(system, set);
@@ -413,11 +424,15 @@ window.balimda = {
         active.delete(req.requestId);
       }
     },
+    // Answer a question a computer asked (its connectors), over the private
+    // link the phone uses for the computer's models.
+    answerOn: (computerId, payload) => computers.answerOn(computerId, payload),
     // Answer an agent's request for permission (Hermes Agent), directly or
     // through the computer the phone is using.
     async approve(providerId, model, payload) {
       if (providerId === 'computer') return computers.approve(model, payload);
       if (approvals.owns(payload)) return approvals.answer(payload);
+      // (asked by this phone; answerOn() is for a computer's questions)
       const provider = providers[providerId];
       if (!provider || !provider.impl.approve) throw new Error('This model can\'t take approvals.');
       const cfg = (await (await ready).getSettings()).providers[providerId] || {};
