@@ -1,12 +1,12 @@
 # Najwa AI privacy policy
 
-*Last updated: 25 September 2026*
+*Last updated: 24 October 2026*
 
 Najwa AI, by Bandar Altariqi, is a chat app that keeps your data on your own devices. Najwa AI has no servers and does not collect, sell or share any personal data.
 
 ## What stays on your device
 
-Your chats, assistants, memory, settings, and any API keys you enter are stored only on your device. On desktop, API keys are encrypted with your system's keychain when one is available.
+Your chats, assistants, memory, settings, and any API keys or connector tokens you enter are stored only on your device. On desktop, keys and tokens are encrypted with your system's keychain when one is available. Keys and connector tokens are never synced.
 
 ## AI models you choose
 
@@ -15,6 +15,16 @@ When you send a message, it goes only to the model you picked:
 - **On-device models** run entirely on your phone or computer. Nothing leaves your device.
 - **Your own servers** (Ollama, LM Studio and similar) receive your messages directly from the app.
 - **Cloud models** (Anthropic, OpenAI) receive your messages directly from the app, using your own API key. Their privacy policies apply.
+- **Your Hermes Agent** receives your messages directly from the app, on the server where you run it.
+- **Your computer's models, from your phone** ("On your computer"): your messages go from your phone to your own computer over an encrypted connection that only your devices can use, and from there to the model you picked.
+
+## Links, the web and connectors (optional)
+
+These can be turned off in **Settings → General** (Read links, the browser) and **Settings → Connectors**.
+
+- **Read links:** when your message contains a link, your device opens that page itself, like a browser would, and gives its text to the model. The website sees an ordinary visit from your device.
+- **A browser for your AI:** models that can use tools may search the web and open pages while answering. Searches go to DuckDuckGo. Pages are opened by your device in a private browser inside Najwa AI, separate from your own browser and without your logins. What to search for and open is decided by the model, based on your conversation.
+- **Connectors** (such as GitHub): when you add one, the model can send requests to that service from your device, with the token you gave it. That service's privacy policy applies. Anything that changes something there waits for your approval first.
 
 ## Sync (optional)
 
