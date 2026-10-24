@@ -20,6 +20,7 @@ Your chats, memory and assistants stay in sync, encrypted end to end.
 [![Works offline](https://img.shields.io/badge/works-offline-5b5bd6)](#run-ai-anywhere)
 [![Your phone uses your PC's models](https://img.shields.io/badge/phone-uses%20your%20PC%27s%20models-5b5bd6)](#your-computers-brain-in-your-pocket)
 [![Browses the web](https://img.shields.io/badge/AI-browses%20the%20web-5b5bd6)](#the-web-when-your-ai-needs-it)
+[![Connectors (MCP)](https://img.shields.io/badge/connectors-GitHub%20%26%20MCP-5b5bd6)](#connectors-let-your-ai-work-with-github-and-more)
 [![Free for personal use](https://img.shields.io/badge/free-for%20personal%20use-5b5bd6)](#license)
 <br>
 [![Works with Hermes Agent](https://img.shields.io/badge/works%20with-Hermes%20Agent-5b5bd6)](#your-hermes-agent-in-a-real-app)
@@ -104,6 +105,15 @@ Ask about a website or something new, and your AI can look it up, on your phone 
 - **Its own private browser.** It runs hidden inside Najwa AI, separate from your own browser: none of your logins, no downloads, no camera, microphone or location, and a fresh start for every reply.
 - **Links in your messages, read for you.** Paste a link and Najwa AI opens it and gives the page's text to any model, even one that can't browse. A chip under your message shows what it read.
 - **Your choice.** Both can be turned off in Settings → General.
+
+## Connectors: let your AI work with GitHub and more
+
+Connect your services in **Settings → Connectors**, and models that can use tools work with them for you. Connectors use the Model Context Protocol (MCP), the standard many AI apps use, so GitHub's official connector works, and so do many others.
+
+- **GitHub.** Ask *"What's open in my project?"*, *"Why did the build fail?"* or *"Fix the typo in the README and open a pull request"*. Your AI reads code, issues, pull requests and build results, and can make changes for you.
+- **You approve every change.** Reading happens by itself. Anything that changes something, like a commit, a pull request or a comment, shows you exactly what it will do, with **Allow once**, **Allow for this chat** or **Deny**. Nothing is approved automatically.
+- **Your token, your limits.** A fine-grained GitHub token decides which repositories it can touch and what it may do. It stays on your device (encrypted on computers) and is never synced.
+- **Any MCP connector.** Add one by its address, or on a computer run one as a program (for example, a connector for your files). When your phone uses your computer's models, it uses the computer's connectors too.
 
 ## Why Najwa AI?
 
@@ -258,6 +268,12 @@ Yes. Install [Tailscale](https://tailscale.com) (free) on the computer and the p
 <summary><b>Can the AI look at a website?</b></summary>
 
 Yes. Paste the link and Najwa AI reads the page for the model. Models that can use tools (Claude, OpenAI, and many Ollama and LM Studio models) can also search the web and browse by themselves, including screenshots to see a page's design. They use a private browser hidden inside Najwa AI, with none of your logins. You can turn both off in Settings → General.
+</details>
+
+<details>
+<summary><b>Can the AI work on my GitHub projects?</b></summary>
+
+Yes. In **Settings → Connectors**, tap **Add GitHub** and paste a fine-grained token that you create on GitHub for the repositories you choose. Then ask a model that can use tools (Claude, OpenAI, and many Ollama and LM Studio models) to look at issues, read code, check builds or open pull requests. Anything that changes your project waits for you to tap **Allow**.
 </details>
 
 <details>

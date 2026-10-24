@@ -20,7 +20,7 @@ const {
 
 // Which providers can use tools, and how their API takes them.
 const TOOL_KINDS = { anthropic: 'anthropic', openai: 'openai', openaiCompatible: 'openaiCompatible', ollama: 'ollama' };
-const MAX_STEPS = 12;
+const MAX_STEPS = 25;
 
 class ToolsUnsupported extends Error {}
 
@@ -269,10 +269,10 @@ async function chatWithTools({ kind, cfg, req, onDelta, signal, onInfo = () => {
       if (signal && signal.aborted) throw abortError();
       const id = `${call.id || 'call'}-${step}-${i}`;
       const label = tools.describe(call);
-      onInfo({ kind: 'tool', id, emoji: '🌐', label, status: 'running' });
+      onInfo({ kind: 'tool', id, emoji: tools.emoji ? tools.emoji(call) : '🌐', label, status: 'running' });
       let r;
       if (step >= MAX_STEPS) {
-        r = { text: 'You have used the browser enough for this reply. Answer the user now with what you found.', error: true };
+        r = { text: 'You\'ve used enough tools for this reply. Answer the user now with what you found.', error: true };
       } else {
         try {
           r = await tools.run(call.name, call.args || {}, signal);
@@ -291,4 +291,23 @@ async function chatWithTools({ kind, cfg, req, onDelta, signal, onInfo = () => {
   return { text: w.text, stopReason: turn.stopReason, stats: turn.stats };
 }
 
-module.exports = { chatWithTools, TOOL_KINDS, MAX_STEPS };
+// Several sets of tools (the browser, each connector) as one.
+function combineTools(sets) {
+  const live = sets.filter((t) => t && t.defs && t.defs.length);
+  const owner = (name) => live.find((t) => (t.owns ? t.owns(name) : t.defs.some((d) => d.name === name)));
+  return {
+    defs: live.flatMap((t) => t.defs),
+    describe: (call) => (owner(call.name) ? owner(call.name).describe(call) : `Using ${call.name}`),
+    emoji: (call) => {
+      const t = owner(call.name);
+      return t && t.emoji ? t.emoji(call) : '🌐';
+    },
+    run: (name, args, signal) => {
+      const t = owner(name);
+      return t ? t.run(name, args, signal) : Promise.resolve({ text: `There's no tool called ${name}.`, error: true });
+    },
+    close: () => live.forEach((t) => t.close && t.close())
+  };
+}
+
+module.exports = { chatWithTools, combineTools, TOOL_KINDS, MAX_STEPS };

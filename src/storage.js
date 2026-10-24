@@ -21,6 +21,7 @@ const DEFAULT_SETTINGS = {
   replyStyle: 'sentences',  // how replies appear while written: 'sentences', 'words' or 'whole'
   readLinks: true,  // open links in the user's messages and give the model the page's text
   browser: true,    // let models (that can use tools) search and browse the web
+  connectors: [],   // services models can use (GitHub…); see src/connectors.js. Not synced.
   temperature: 0.7,
   maxTokens: 0,
   historyLimit: 0,
@@ -511,6 +512,9 @@ class Storage {
     for (const p of Object.values(settings.providers)) {
       if (p.apiKey) p.apiKey = this.decrypt(p.apiKey);
     }
+    for (const c of settings.connectors || []) {
+      if (c.token) c.token = this.decrypt(c.token);
+    }
     return settings;
   }
 
@@ -518,6 +522,9 @@ class Storage {
     const copy = structuredClone(settings);
     for (const p of Object.values(copy.providers || {})) {
       if (p.apiKey) p.apiKey = this.encrypt(p.apiKey);
+    }
+    for (const c of copy.connectors || []) {
+      if (c.token) c.token = this.encrypt(c.token);
     }
     let sharedChanged = false;
     await this._serial(async () => {

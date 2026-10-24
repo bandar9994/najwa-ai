@@ -203,6 +203,9 @@ contextBridge.exposeInMainWorld('balimda', {
   web: {
     read: invoke('web:read')
   },
+  connectors: {
+    test: invoke('connectors:test')
+  },
   ai: {
     models: invoke('ai:models'),
     chat: invoke('ai:chat'),
