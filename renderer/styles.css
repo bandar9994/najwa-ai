@@ -65,6 +65,9 @@ html, body {
   height: 100%;
   overflow: hidden; /* only the message list scrolls, never the page */
   touch-action: manipulation; /* a double tap doesn't zoom (phones) */
+  /* Text keeps its size when the phone turns sideways and back (iPhone). */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
   background: var(--bg);
   color: var(--text);
   font: 14px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
