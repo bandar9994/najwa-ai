@@ -155,6 +155,12 @@ The same chat continues on your phone and your computer, even with a different m
 - **Your phone, your computer's brain.** Turn on one switch on your computer, and your phone can chat with every model the computer has, including cloud models on the computer's API keys. The phone finds the computer through sync, with nothing to type, over an encrypted connection only your devices can use. It works on your home Wi-Fi, or anywhere with [Tailscale](https://tailscale.com). [More about it](#your-computers-brain-in-your-pocket).
 - **The right model on each device.** Every chat remembers which model to use on each device: a small, fast model on the phone and a 27B model on the PC, in the same conversation.
 
+### Tools for your AI
+
+- **A browser.** Models that can use tools search the web, open pages, click, type and take screenshots, on your phone and computer, in a private browser inside Najwa AI. [More](#the-web-when-your-ai-needs-it)
+- **Read links.** Paste a link and any model gets the page's text.
+- **Connectors.** GitHub and any MCP service: your AI reads your project, checks builds and opens pull requests, with your approval for every change. [More](#connectors-let-your-ai-work-with-github-and-more)
+
 ### Memory that grows with you
 
 - **Remembers automatically.** Mention your name, your job, your family or what you like, and Najwa AI adds it to memory by itself. A short note tells you what it learned.
