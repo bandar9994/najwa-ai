@@ -5,6 +5,7 @@
 package com.bandar9994.balimda;
 
 import android.accounts.Account;
+import android.accounts.AccountManager;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.pm.PackageInfo;
@@ -25,10 +26,12 @@ import com.google.android.gms.auth.api.identity.AuthorizationRequest;
 import com.google.android.gms.auth.api.identity.AuthorizationResult;
 import com.google.android.gms.auth.api.identity.Identity;
 import com.google.android.gms.auth.api.identity.RevokeAccessRequest;
+import com.google.android.gms.common.AccountPicker;
 import com.google.android.gms.common.api.ApiException;
 import com.google.android.gms.common.api.CommonStatusCodes;
 import com.google.android.gms.common.api.Scope;
 import java.security.MessageDigest;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -51,23 +54,61 @@ public class GoogleAuthPlugin extends Plugin {
 
     private final ExecutorService background = Executors.newSingleThreadExecutor();
     private ActivityResultLauncher<IntentSenderRequest> launcher;
+    private ActivityResultLauncher<Intent> picker;
     private PluginCall pending;
+    private String pendingEmail;
+    private PluginCall picking;
 
     @Override
     public void load() {
         launcher = getActivity().registerForActivityResult(new ActivityResultContracts.StartIntentSenderForResult(), this::onResult);
+        picker = getActivity().registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), this::onPicked);
     }
 
-    /** { interactive: boolean } -> { accessToken } */
+    /**
+     * { interactive: boolean, chooseAccount: boolean, account: string } -> { accessToken, email }
+     * chooseAccount (setting up sync) first shows Google's account picker, so
+     * any account on the phone can be used, not only the last one. account
+     * keeps later renewals on the account that was picked.
+     */
     @PluginMethod
     public void authorize(PluginCall call) {
         boolean interactive = Boolean.TRUE.equals(call.getBoolean("interactive", false));
-        AuthorizationRequest request = AuthorizationRequest.builder().setRequestedScopes(SCOPES).build();
+        if (interactive && Boolean.TRUE.equals(call.getBoolean("chooseAccount", false))) {
+            if (picking != null) picking.reject("Google sign-in was restarted.", "CANCELLED");
+            picking = call;
+            picker.launch(AccountPicker.newChooseAccountIntent(new AccountPicker.AccountChooserOptions.Builder()
+                .setAllowableAccountsTypes(Arrays.asList("com.google"))
+                .setAlwaysShowAccountPicker(true)
+                .build()));
+            return;
+        }
+        String email = call.getString("account");
+        authorizeFor(call, email != null && !email.isEmpty() ? email : null, interactive);
+    }
+
+    private void onPicked(ActivityResult result) {
+        PluginCall call = picking;
+        picking = null;
+        if (call == null) return;
+        Intent data = result.getData();
+        String name = data != null ? data.getStringExtra(AccountManager.KEY_ACCOUNT_NAME) : null;
+        if (result.getResultCode() != Activity.RESULT_OK || name == null) {
+            call.reject("Google sign-in was cancelled.", "CANCELLED");
+            return;
+        }
+        authorizeFor(call, name, true);
+    }
+
+    private void authorizeFor(PluginCall call, String email, boolean interactive) {
+        AuthorizationRequest.Builder builder = AuthorizationRequest.builder().setRequestedScopes(SCOPES);
+        if (email != null) builder.setAccount(new Account(email, "com.google"));
+        AuthorizationRequest request = builder.build();
         Identity.getAuthorizationClient(getActivity())
             .authorize(request)
             .addOnSuccessListener(result -> {
                 if (!result.hasResolution()) {
-                    resolveWith(call, result);
+                    resolveWith(call, result, email);
                     return;
                 }
                 if (!interactive || result.getPendingIntent() == null) {
@@ -76,6 +117,7 @@ public class GoogleAuthPlugin extends Plugin {
                 }
                 if (pending != null) pending.reject("Google sign-in was restarted.", "CANCELLED");
                 pending = call;
+                pendingEmail = email;
                 launcher.launch(new IntentSenderRequest.Builder(result.getPendingIntent().getIntentSender()).build());
             })
             .addOnFailureListener(e -> reject(call, e));
@@ -83,7 +125,9 @@ public class GoogleAuthPlugin extends Plugin {
 
     private void onResult(ActivityResult activityResult) {
         PluginCall call = pending;
+        String email = pendingEmail;
         pending = null;
+        pendingEmail = null;
         if (call == null) return;
         // Google also closes this screen by itself when something is set up
         // wrong, so read its answer rather than assuming the user cancelled.
@@ -95,13 +139,13 @@ public class GoogleAuthPlugin extends Plugin {
         }
         try {
             AuthorizationResult result = Identity.getAuthorizationClient(getActivity()).getAuthorizationResultFromIntent(data);
-            resolveWith(call, result);
+            resolveWith(call, result, email);
         } catch (ApiException e) {
             reject(call, e);
         }
     }
 
-    private void resolveWith(PluginCall call, AuthorizationResult result) {
+    private void resolveWith(PluginCall call, AuthorizationResult result, String email) {
         String token = result.getAccessToken();
         if (token == null) {
             call.reject("Google did not return an access token. Try again.");
@@ -109,6 +153,7 @@ public class GoogleAuthPlugin extends Plugin {
         }
         JSObject ret = new JSObject();
         ret.put("accessToken", token);
+        if (email != null) ret.put("email", email);
         call.resolve(ret);
     }
 

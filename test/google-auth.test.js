@@ -20,6 +20,7 @@ function fakeGoogle({ deny = false } = {}) {
     assert.strictEqual(u.searchParams.get('scope'), SCOPE);
     assert.strictEqual(u.searchParams.get('code_challenge_method'), 'S256');
     assert.strictEqual(u.searchParams.get('access_type'), 'offline');
+    assert.strictEqual(u.searchParams.get('prompt'), 'select_account consent');
     challenge = u.searchParams.get('code_challenge');
     const back = new URL(u.searchParams.get('redirect_uri'));
     assert.strictEqual(back.hostname, '127.0.0.1');

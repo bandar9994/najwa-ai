@@ -162,7 +162,11 @@ function fakeDrive({ expireFirstToken = false } = {}) {
 
 function fakeGoogleAuth(drive) {
   const auth = { signedOut: false };
-  auth.signIn = async () => ({ account: null, secret: 'refresh-token' });
+  auth.signIns = 0;
+  auth.signIn = async () => {
+    auth.signIns++;
+    return { account: null, secret: 'refresh-token' };
+  };
   auth.accessToken = async (secret, { force } = {}) => {
     assert.strictEqual(secret, 'refresh-token');
     if (force) drive.expired = false;
@@ -528,6 +532,43 @@ for (const [kind, makeBackend] of Object.entries(BACKENDS)) {
     assert.strictEqual(phone.sync.status().configured, false);
   });
 
+  test(`${kind}: starts over with a new passphrase, and the old one stops syncing`, async () => {
+    const backend = makeBackend();
+    const pc = await device(backend, 'pc');
+    const pcChat = await pc.storage.createChat({ title: 'From the PC' });
+    await addMessage(pc.storage, pcChat.id, 'old passphrase');
+    await pc.connect();
+
+    const phone = await device(backend, 'phone');
+    const phoneChat = await phone.storage.createChat({ title: 'From the phone' });
+    await addMessage(phone.storage, phoneChat.id, 'new passphrase');
+    await assert.rejects(phone.connect('a new passphrase'), /Wrong sync passphrase/);
+    assert.ok(phone.sync.status().startOver);
+    if (kind === 'github') await assert.rejects(phone.connect('a new passphrase', { startOver: true, repo: 'me/other' }), /again first/);
+    const signIns = backend.googleAuth ? backend.googleAuth.signIns : 0;
+    const status = await phone.connect('a new passphrase', { startOver: true });
+    assert.strictEqual(status.error, null);
+    assert.strictEqual(status.startOver, null);
+    // The refused sign-in is reused rather than asking Google again.
+    if (backend.googleAuth) assert.strictEqual(backend.googleAuth.signIns, signIns);
+    assert.ok(backend.has(`chats/${phoneChat.id}.enc`));
+    assert.ok(!backend.has(`chats/${pcChat.id}.enc`));
+
+    // The PC still has the old key: it stops instead of mixing it in.
+    await addMessage(pc.storage, pcChat.id, 'more');
+    const pcStatus = await pc.sync.run();
+    assert.match(pcStatus.error, /started over/);
+    assert.strictEqual(pcStatus.needsSetup, true);
+    assert.ok(!backend.has(`chats/${pcChat.id}.enc`));
+
+    // Set up again with the new passphrase: both sides have everything.
+    await pc.sync.disconnect();
+    assert.strictEqual((await pc.connect('a new passphrase')).error, null);
+    assert.deepStrictEqual(await contents(pc.storage, phoneChat.id), ['new passphrase']);
+    await phone.sync.run();
+    assert.deepStrictEqual(await contents(phone.storage, pcChat.id), ['old passphrase', 'more']);
+  });
+
   test(`${kind}: sync settings survive a restart and disconnect forgets them`, async () => {
     const backend = makeBackend();
     const pc = await device(backend, 'pc');
@@ -589,7 +630,9 @@ test('gdrive: works while Drive\'s file list is still catching up', async () => 
   // Removing the setup file really is reported.
   const meta = [...backend.server.files.values()].find((f) => f.name === 'balimda-sync.json');
   backend.server.files.delete(meta.id);
-  assert.match((await phone.sync.run()).error, /removed|gone/);
+  const after = await phone.sync.run();
+  assert.match(after.error, /removed|gone/);
+  assert.strictEqual(after.needsSetup, true);
 });
 
 test('gdrive: cleans up a chat file created twice at the same moment', async () => {

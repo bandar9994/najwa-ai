@@ -97,7 +97,8 @@ function desktopGoogleAuth({ clientId, clientSecret, openUrl, fetch, timeoutMs =
           code_challenge_method: 'S256',
           state,
           access_type: 'offline',
-          prompt: 'consent'
+          // Always ask which account, so a different one can be picked.
+          prompt: 'select_account consent'
         })}`);
         const t = await tokenRequest({ grant_type: 'authorization_code', code: await code, code_verifier: verifier, redirect_uri: redirectUri });
         if (!t.refresh_token) throw new SyncError('Google did not allow offline access. Try signing in again.');
