@@ -344,6 +344,7 @@ details.thinking summary { cursor: pointer; }
 .queued-body { flex: 1; min-width: 0; }
 .queued-label { display: block; font-size: 11px; color: var(--text-dim); }
 .queued-text { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.queued-now { padding: 4px 10px; font-size: 12px; white-space: nowrap; }
 .attachments { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 8px; }
 .attachments[hidden] { display: none; }
 .attachment { position: relative; }

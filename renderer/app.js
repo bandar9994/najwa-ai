@@ -1011,7 +1011,7 @@ function updateSendButton() {
   const streaming = isStreaming(S.current);
   el.stopBtn.hidden = !streaming;
   el.sendBtn.hidden = streaming && !el.input.value.trim() && !pictures.length;
-  el.sendBtn.title = 'Send';
+  el.sendBtn.title = streaming ? 'Send (it waits for the reply, or the agent reads it after its current step)' : 'Send';
   drawQueued();
 }
 
@@ -1029,6 +1029,12 @@ function drawQueued() {
       h('span', { class: 'queued-label', text: 'Sends when the reply is done' }),
       h('span', { class: 'queued-text', dir: 'auto', text: q.text || (q.images.length === 1 ? '1 picture' : `${q.images.length} pictures`) })),
     h('button', {
+      class: 'btn queued-now',
+      title: 'Stop the reply and send this now',
+      text: 'Send now',
+      onclick: () => interruptFor(S.current)
+    }),
+    h('button', {
       class: 'icon-btn',
       title: 'Edit (moves it back to the box)',
       'aria-label': 'Edit this message',
@@ -1039,6 +1045,17 @@ function drawQueued() {
         putBack(S.current, [q]);
       }
     }))));
+}
+
+// "Send now": the reply stops where it is (kept, and marked so) and what was
+// waiting goes right away.
+function interruptFor(chat) {
+  for (const [requestId, r] of S.requests) {
+    if (r.chat !== chat) continue;
+    r.interrupted = true;
+    r.stopped = true;
+    api.ai.abort(requestId);
+  }
 }
 
 // Waiting messages go back into the box (edited, or the reply was stopped).
@@ -1057,11 +1074,10 @@ function putBack(chat, list) {
   updateSendButton();
 }
 
-// A message sent while a reply is written. Hermes, and replies working with
-// tools, read it after their current step, so it shows among the reply's
-// steps. Any other reply is interrupted: it stops where it is and the model
-// answers the new message right away. (An agent that can't take it, like an
-// older Hermes, isn't cut off: the message waits for it, see queued.)
+// A message sent while a reply is written, as in Claude. Hermes, and replies
+// working with tools, read it after their current step, so it shows among
+// the reply's steps. Otherwise it waits above the box and goes when the reply
+// is done, unless "Send now" interrupts the reply (see interruptFor).
 async function sendWhileReplying(chat, text, images) {
   const found = [...S.requests].find(([, r]) => r.chat === chat);
   if (found && text && !images.length && api.ai.steer) {
@@ -1083,12 +1099,6 @@ async function sendWhileReplying(chat, text, images) {
   }
   if (isStreaming(chat)) {
     queued.set(chat, [...(queued.get(chat) || []), { text, images }]);
-    if (found && !isAgent(found[1].msg.model)) {
-      const [requestId, r] = found;
-      r.interrupted = true;
-      r.stopped = true;
-      api.ai.abort(requestId);
-    }
   } else {
     // The reply ended meanwhile: this is simply the next message.
     queued.set(chat, [{ text, images }]);

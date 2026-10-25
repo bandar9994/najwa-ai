@@ -192,10 +192,9 @@ Tokens stay on the device (encrypted on computers) and aren't synced. When your 
 
 In **Settings → General → How replies appear**: **A sentence at a time** (the default, easy to read), **Word by word**, or **All at once, when finished**. Either way, the page stays still while a reply is written: your message moves to the top and the reply appears below it. The ↓ button jumps to the end.
 
-You can keep writing while a reply is written:
-- **Hermes Agent, and models using the browser or connectors**, work in steps, and read your message after the current one, like Claude does. It shows among the reply's steps (💬 You: …, then **read ✓**), and the reply takes it into account. If the agent finishes before reading it, it goes as your next message.
-- **Any other reply** (a model just answering) stops where it is, marked "Stopped here to answer your next message", and the model answers your new message right away, with what it wrote so far in mind.
-- If an agent can't take a message mid-way (an older Hermes), it isn't cut off: your message waits above the message box and goes when it's done. ✎ takes it back to edit.
+You can keep writing while a reply is written, as in Claude:
+- **Hermes Agent, and models working with the browser or connectors**, read your message after their current step. It shows among the reply's steps (💬 You: …, then **read ✓**), and the reply takes it into account. If the agent finishes before reading it, it goes as your next message.
+- **Otherwise** your message waits above the message box and goes as soon as the reply is done (several go together as one). **Send now** stops the reply where it is (marked "Stopped here to answer your next message") and sends it right away. ✎ takes it back to edit.
 - The red ■ stops the reply; anything waiting then goes back into the box instead of being sent.
 
 ### Using it away from home
