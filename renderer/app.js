@@ -805,7 +805,7 @@ function agentEvent(chat, msg, evt) {
   } else if (evt.kind === 'approval') {
     msg.approvals = msg.approvals || [];
     const origin = evt.origin && evt.origin.id ? { id: String(evt.origin.id), name: String(evt.origin.name || 'another device').slice(0, 60), computer: !!evt.origin.computer } : null;
-    msg.approvals.push({ runId: evt.runId, approvalId: evt.approvalId || null, origin, title: evt.title ? String(evt.title).slice(0, 200) : null, command: String(evt.command || '').slice(0, 2000), description: String(evt.description || '').slice(0, 500), choices: Array.isArray(evt.choices) && evt.choices.length ? evt.choices : ['once', 'deny'], state: 'pending' });
+    msg.approvals.push({ runId: evt.runId, approvalId: evt.approvalId || null, connectorId: evt.connectorId ? String(evt.connectorId) : null, origin, title: evt.title ? String(evt.title).slice(0, 200) : null, command: String(evt.command || '').slice(0, 2000), description: String(evt.description || '').slice(0, 500), choices: Array.isArray(evt.choices) && evt.choices.length ? evt.choices : ['once', 'deny'], state: 'pending' });
     if (S.current !== chat || document.hidden) toast(`${evt.title ? 'A connector' : 'Hermes'} is asking for permission. Open the chat to answer.`, 5000);
   } else if (evt.kind === 'status') {
     msg.agentStatus = String(evt.text).slice(0, 200);
@@ -831,6 +831,13 @@ function approvalPlace(a) {
 }
 
 async function answerApproval(chat, msg, approval, choice) {
+  // A connector allowed always: it won't ask again on this device.
+  const connector = choice === 'always' && approval.connectorId && (S.settings.connectors || []).find((c) => c.id === approval.connectorId);
+  if (connector) {
+    connector.autoApprove = true;
+    saveSettings();
+    toast(`${connector.name} won't ask again. You can change this in Settings → Connectors.`, 5000);
+  }
   approval.state = 'sending';
   scheduleMessageRender(chat, msg);
   try {
@@ -889,7 +896,9 @@ function agentSteps(msg) {
         a.description ? h('div', { class: 'approval-why', text: a.description }) : null,
         a.command ? h('pre', { class: 'approval-command', dir: 'ltr', text: a.command }) : null,
         approvalPlace(a) === 'elsewhere' ? h('div', { class: 'approval-elsewhere', text: `Waiting for your answer on ${a.origin.name}.` }) : h('div', { class: 'approval-buttons' },
-          ...(a.choices || ['once', 'deny']).filter((c) => APPROVAL_LABELS[c]).map((c) => h('button', {
+          // A connector's "Always allow" is saved in this device's settings, so
+          // only offered on the device that asked.
+          ...(a.choices || ['once', 'deny']).filter((c) => APPROVAL_LABELS[c] && !(c === 'always' && a.connectorId && approvalPlace(a) !== 'here')).map((c) => h('button', {
             class: `btn ${c === 'deny' ? 'danger' : c === 'once' ? 'primary' : ''}`,
             text: APPROVAL_LABELS[c],
             disabled: a.state === 'sending',
@@ -2636,6 +2645,8 @@ function openSettings(tab = 'general') {
           return h('div', { class: 'provider-card' },
             h('h4', {}, `${c.kind === 'github' ? '🐙' : c.kind === 'command' ? '🧩' : '🔌'} ${c.name}`, status),
             check('Enabled', c, 'enabled'),
+            check('Allow everything without asking', c, 'autoApprove'),
+            h('div', { class: 'help', text: 'On: models do whatever the job needs with this connector (commits, pull requests, issues, deleting…) without stopping to ask. Your token\'s permissions still limit what it can do.' }),
             c.kind === 'github' ? h('div', { class: 'help' },
               'Make a fine-grained token: choose the repositories Najwa AI may use, then the permissions it needs, e.g. Contents, Issues and Pull requests (read and write), Actions and Metadata (read). ',
               h('a', { href: GITHUB_TOKEN_URL, target: '_blank', rel: 'noopener', text: 'Create a token on GitHub' })) : null,
@@ -2656,7 +2667,7 @@ function openSettings(tab = 'general') {
           draw();
         };
         box.replaceChildren(
-          h('p', { class: 'help', text: 'Let models that can use tools (Claude, OpenAI, and Ollama or LM Studio models with tool support) work with your services. Reading happens by itself; anything that changes something (a commit, a pull request, an issue, a comment…) waits for you to tap Allow in the chat.' }),
+          h('p', { class: 'help', text: 'Let models that can use tools (Claude, OpenAI, and Ollama or LM Studio models with tool support) work with your services. Reading happens by itself; anything that changes something (a commit, a pull request, an issue, a comment…) waits for you to tap Allow in the chat, unless you turn on "Allow everything without asking" (or tap Always allow in the chat).' }),
           ...cards,
           h('div', { class: 'field-row' },
             s.connectors.some((c) => c.kind === 'github') ? null : h('button', { class: 'btn primary', text: '＋ Add GitHub', onclick: () => add({ kind: 'github', name: 'GitHub' }) }),

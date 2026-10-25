@@ -5,10 +5,12 @@
 // Connectors (Settings → Connectors): services the model can use through
 // their MCP tools, like GitHub. Tools a connector marks as read-only run by
 // themselves; anything else waits for the user's answer (Allow once, Allow
-// for this chat, Deny) in the chat, like Hermes Agent's approvals.
+// for this chat, Always allow, Deny) in the chat, like Hermes Agent's
+// approvals, unless the user turned on "Allow everything without asking"
+// for that connector (autoApprove).
 //
 // A connector in settings:
-//   { id, name, kind: 'github' | 'url' | 'command', enabled,
+//   { id, name, kind: 'github' | 'url' | 'command', enabled, autoApprove,
 //     url, token,                 // on the internet (the token is sent as "Bearer …")
 //     command, args, env }        // a program on this computer (desktop only)
 // Tokens stay on the device (encrypted on computers) and aren't synced.
@@ -109,7 +111,7 @@ function connectorHub({ transportFor, version }) {
 
     /**
      * The enabled connectors' tools for one reply, for src/tool-chat.js.
-     * @param approve  ({ id, title, command, description }) -> 'once' | 'session' | 'deny'
+     * @param approve  ({ connectorId, title, command, description }) -> 'once' | 'session' | 'always' | 'deny'
      * @param allowed  a Set of tools the user allowed for this chat (filled in here)
      */
     async toolset(connectors, { approve, allowed = new Set(), signal } = {}) {
@@ -117,6 +119,7 @@ function connectorHub({ transportFor, version }) {
       const defs = [];
       const problems = [];
       const names = [];
+      const trusted = []; // connectors allowed to do anything without asking
       for (const c of connectors.filter((x) => x && x.enabled !== false)) {
         let tools;
         try {
@@ -126,6 +129,7 @@ function connectorHub({ transportFor, version }) {
           continue;
         }
         names.push(c.name);
+        if (c.autoApprove) trusted.push(c.name);
         const { client } = clientOf(c);
         const prefix = slug(c.name);
         for (const t of tools) {
@@ -140,6 +144,7 @@ function connectorHub({ transportFor, version }) {
       return {
         defs,
         connected: names,
+        trusted,
         problems,
         owns: (name) => byName.has(name),
         emoji: (call) => (byName.has(call.name) ? emojiOf(byName.get(call.name).c) : '🔌'),
@@ -152,8 +157,10 @@ function connectorHub({ transportFor, version }) {
           const e = byName.get(name);
           if (!e) return { text: `There's no tool called ${name}.`, error: true };
           const key = `${e.c.id}/${e.t.name}`;
-          if (!e.readOnly && !allowed.has(key)) {
+          const all = `${e.c.id}/*`;
+          if (!e.readOnly && !e.c.autoApprove && !allowed.has(key) && !allowed.has(all)) {
             const choice = await approve({
+              connectorId: e.c.id,
               title: `${e.c.name}: ${e.t.title || humanize(e.t.name)}`,
               command: `${e.c.name} → ${e.t.name}\n${JSON.stringify(args || {}, null, 2)}`.slice(0, 2000),
               description: firstSentence(e.t.description) || `${e.c.name} wants to ${humanize(e.t.name).toLowerCase()}.`
@@ -162,6 +169,8 @@ function connectorHub({ transportFor, version }) {
               return { text: 'The user said no to this. Don\'t do it unless they ask for it again.', error: true };
             }
             if (choice === 'session') allowed.add(key);
+            // (also saved in the connector's settings by the app)
+            if (choice === 'always') allowed.add(all);
           }
           return resultOf(await e.client.callTool(e.t.name, args, sig));
         }
@@ -179,7 +188,10 @@ function connectorHub({ transportFor, version }) {
 function connectorsNote(system, set) {
   const lines = [];
   if (set.connected.length) {
-    lines.push(`You're connected to: ${set.connected.join(', ')}. Use their tools for the user's work there. Reading is free; anything that changes something (a commit, a pull request, an issue, a comment…) waits for the user's approval, so say what you're about to do first.`);
+    lines.push(`You're connected to: ${set.connected.join(', ')}. Use their tools for the user's work there.`);
+    const asks = set.connected.filter((n) => !(set.trusted || []).includes(n));
+    if (asks.length) lines.push(`With ${asks.join(', ')}, reading is free; anything that changes something (a commit, a pull request, an issue, a comment…) waits for the user's approval, so say what you're about to do first.`);
+    if ((set.trusted || []).length) lines.push(`The user has allowed everything with ${set.trusted.join(', ')} without asking: carry out the whole job without stopping to ask for permission, and say what you changed at the end.`);
   }
   if (set.problems.length) lines.push(set.problems.join(' '));
   if (!lines.length) return system;

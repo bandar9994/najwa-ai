@@ -111,7 +111,7 @@ Ask about a website or something new, and your AI can look it up, on your phone 
 Connect your services in **Settings → Connectors**, and models that can use tools work with them for you. Connectors use the Model Context Protocol (MCP), the standard many AI apps use, so GitHub's official connector works, and so do many others.
 
 - **GitHub.** Ask *"What's open in my project?"*, *"Why did the build fail?"* or *"Fix the typo in the README and open a pull request"*. Your AI reads code, issues, pull requests and build results, and can make changes for you.
-- **You approve every change.** Reading happens by itself. Anything that changes something, like a commit, a pull request or a comment, shows you exactly what it will do, with **Allow once**, **Allow for this chat** or **Deny**. Nothing is approved automatically.
+- **You decide how much it may do.** Reading happens by itself. Anything that changes something, like a commit, a pull request or a comment, shows you exactly what it will do, with **Allow once**, **Allow for this chat**, **Always allow** or **Deny**. Or turn on **Allow everything without asking** and give it a whole job: it works through it without stopping.
 - **Your token, your limits.** A fine-grained GitHub token decides which repositories it can touch and what it may do. It stays on your device (encrypted on computers) and is never synced.
 - **Any MCP connector.** Add one by its address, or on a computer run one as a program (for example, a connector for your files). When your phone uses your computer's models, it uses the computer's connectors too.
 
@@ -159,7 +159,7 @@ The same chat continues on your phone and your computer, even with a different m
 
 - **A browser.** Models that can use tools search the web, open pages, click, type and take screenshots, on your phone and computer, in a private browser inside Najwa AI. [More](#the-web-when-your-ai-needs-it)
 - **Read links.** Paste a link and any model gets the page's text.
-- **Connectors.** GitHub and any MCP service: your AI reads your project, checks builds and opens pull requests, with your approval for every change. [More](#connectors-let-your-ai-work-with-github-and-more)
+- **Connectors.** GitHub and any MCP service: your AI reads your project, checks builds and opens pull requests, asking before each change or, if you allow it, doing the whole job by itself. [More](#connectors-let-your-ai-work-with-github-and-more)
 
 ### Memory that grows with you
 
@@ -279,7 +279,7 @@ Yes. Paste the link and Najwa AI reads the page for the model. Models that can u
 <details>
 <summary><b>Can the AI work on my GitHub projects?</b></summary>
 
-Yes. In **Settings → Connectors**, tap **Add GitHub** and paste a fine-grained token that you create on GitHub for the repositories you choose. Then ask a model that can use tools (Claude, OpenAI, and many Ollama and LM Studio models) to look at issues, read code, check builds or open pull requests. Anything that changes your project waits for you to tap **Allow**.
+Yes. In **Settings → Connectors**, tap **Add GitHub** and paste a fine-grained token that you create on GitHub for the repositories you choose. Then ask a model that can use tools (Claude, OpenAI, and many Ollama and LM Studio models) to look at issues, read code, check builds or open pull requests. Anything that changes your project waits for you to tap **Allow**, unless you turn on **Allow everything without asking** for that connector.
 </details>
 
 <details>
