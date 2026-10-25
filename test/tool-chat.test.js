@@ -202,6 +202,49 @@ test('Claude: tool use, with the screenshot in the tool result', async () => {
   }
 });
 
+test('Messages sent while the model works: read after its step, or sent next when too late', async () => {
+  const bodies = [];
+  const steering = { send: null };
+  const s = await server(async (req, res) => {
+    bodies.push(await readBody(req));
+    if (bodies.length === 1) {
+      // The user writes while the model is busy.
+      assert.strictEqual(steering.send('look at the pricing too', 's1'), true);
+      return claudeSse(res, [start,
+        { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: 'tu_1', name: 'screenshot', input: {} } },
+        { type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: '{}' } },
+        { type: 'content_block_stop', index: 0 },
+        { type: 'message_delta', delta: { stop_reason: 'tool_use', stop_sequence: null }, usage: { output_tokens: 2 } },
+        { type: 'message_stop' }]);
+    }
+    steering.send('thanks!', 's2');
+    claudeSse(res, [start,
+      { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+      { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Clean, and the pricing is clear.' } },
+      { type: 'content_block_stop', index: 0 },
+      { type: 'message_delta', delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 2 } },
+      { type: 'message_stop' }]);
+  });
+  try {
+    const infos = [];
+    const r = await chatWithTools({
+      kind: 'anthropic', cfg: { apiKey: 'k', baseUrl: s.url }, tools: fakeTools(),
+      req: { model: 'claude-haiku-4-5', messages: [{ role: 'user', content: 'How does it look?' }], steering },
+      onDelta: () => {}, onInfo: (i) => infos.push(i)
+    });
+    // Read with the tool's result, in the same turn.
+    const turn = bodies[1].messages[2].content;
+    assert.strictEqual(turn[0].type, 'tool_result');
+    assert.deepStrictEqual(turn[1], { type: 'text', text: '[The user sent this while you were working]\nlook at the pricing too' });
+    assert.ok(infos.some((i) => i.kind === 'steer' && i.id === 's1' && i.status === 'read'));
+    // Sent during the last step: the model never saw it.
+    assert.strictEqual(r.pendingSteer, 'thanks!');
+    assert.strictEqual(steering.send, null);
+  } finally {
+    s.close();
+  }
+});
+
 test('Text browser (phone): search results and pages with links', async () => {
   const s = await server((req, res) => {
     res.setHeader('Content-Type', 'text/html');

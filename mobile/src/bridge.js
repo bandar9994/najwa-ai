@@ -266,6 +266,7 @@ const safeName = (s) => String(s || '').replace(/[^\p{L}\p{N}\- ]+/gu, '').repla
 // ---- the API ---------------------------------------------------------------
 
 const active = new Map();
+const steering = new Map(); // requestId -> { send } while a reply can take messages mid-way
 const aiListeners = new Set();
 const menuListeners = new Set();
 
@@ -366,6 +367,8 @@ window.balimda = {
       const cfg = (await (await ready).getSettings()).providers[req.provider] || {};
       const controller = new AbortController();
       active.set(req.requestId, controller);
+      const steer = { send: null };
+      steering.set(req.requestId, steer);
       try {
         const request = {
           model: req.model,
@@ -379,7 +382,8 @@ window.balimda = {
           // the computer's own.
           browse: !!req.browse,
           connectors: !!req.connectors,
-          chatId: req.chatId
+          chatId: req.chatId,
+          steering: steer
         };
         const onDelta = (text) => {
           for (const cb of aiListeners) cb({ requestId: req.requestId, type: 'delta', text });
@@ -410,6 +414,11 @@ window.balimda = {
                 kind: TOOL_KINDS[req.provider], cfg, req: { ...request, system }, onDelta, signal: controller.signal, onInfo, tools
               });
               if (!result.fallback) return { ok: true, ...result };
+              // Messages sent meanwhile go as the next message.
+              if (result.pendingSteer) {
+                const plain = await provider.impl.streamChat(cfg, request, onDelta, controller.signal, onInfo);
+                return { ok: true, ...plain, pendingSteer: result.pendingSteer };
+              }
             }
           } finally {
             if (browser) browser.close();
@@ -426,6 +435,18 @@ window.balimda = {
         return { ok: false, error: message };
       } finally {
         active.delete(req.requestId);
+        steering.delete(req.requestId);
+      }
+    },
+    // A message sent while a reply is written: true if the model reads it
+    // during this reply (Hermes, or a reply using tools).
+    async steer(requestId, text, id) {
+      const s = steering.get(requestId);
+      if (!s || !s.send) return false;
+      try {
+        return !!(await s.send(String(text || ''), id));
+      } catch {
+        return false;
       }
     },
     // Answer a question a computer asked (its connectors), over the private
