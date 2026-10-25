@@ -4,8 +4,9 @@
 
 // Questions to the user from the app's own tools (a connector wanting to change
 // something): shown in the chat as an approval card, like Hermes Agent's, and
-// answered with Allow once, Allow for this chat or Deny. Unanswered ones are
-// denied after 10 minutes, or when the reply is stopped.
+// answered with Allow once, Allow for this chat, Always allow (the app then
+// stops asking for that connector) or Deny. Unanswered ones are denied after
+// 10 minutes, or when the reply is stopped.
 
 'use strict';
 
@@ -37,7 +38,10 @@ function localApprovals() {
         const timer = setTimeout(() => done('deny'), WAIT_MS);
         pending.set(id, done);
         if (signal) signal.addEventListener('abort', () => done('deny'), { once: true });
-        onInfo({ kind: 'approval', runId: id, approvalId: null, title: a.title, command: a.command, description: a.description, choices: ['once', 'session', 'deny'], origin });
+        onInfo({
+          kind: 'approval', runId: id, approvalId: null, connectorId: a.connectorId || null, title: a.title, command: a.command, description: a.description,
+          choices: ['once', 'session', 'always', 'deny'], origin
+        });
       });
     },
     owns: (payload) => !!payload && typeof payload.runId === 'string' && payload.runId.startsWith('local:'),
@@ -45,7 +49,7 @@ function localApprovals() {
     answer(payload) {
       const done = pending.get(payload.runId);
       if (!done) return false;
-      done(payload.choice === 'once' || payload.choice === 'session' ? payload.choice : 'deny');
+      done(['once', 'session', 'always'].includes(payload.choice) ? payload.choice : 'deny');
       return true;
     }
   };

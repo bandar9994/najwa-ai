@@ -180,7 +180,9 @@ Connectors let models that can use tools work with your services. Open **Setting
 4. Create the token, copy it (it starts with `github_pat_`), paste it into Najwa AI and tap **Test**. You should see "Connected · … tools".
 5. Pick a model that can use tools and ask, for example: *"List the open issues in najwa-ai"* or *"Read src/link-reader.js and explain it"*.
 
-Each step shows above the answer ("GitHub: Get file contents README.md"). When the AI wants to change something, you see exactly what it will do, with **Allow once**, **Allow for this chat** or **Deny**. Nothing is approved automatically.
+Each step shows above the answer ("GitHub: Get file contents README.md"). When the AI wants to change something, you see exactly what it will do, with **Allow once**, **Allow for this chat**, **Always allow** or **Deny**.
+
+**To let it work without stopping:** turn on **Allow everything without asking** for the connector (or tap **Always allow** on any question, which turns it on). From then on the AI does the whole job (commits, pull requests, issues…) without asking, and tells you what it changed at the end. Your token's permissions still limit what it can do, so give the token only what you're happy for it to do alone. Turn the switch off to be asked again. This is per device and per connector; Hermes Agent's own questions are still always asked.
 
 **Other connectors:** **Add by address** for an MCP server on the internet (with a token if it needs one). On a computer, **Add a program on this computer** runs a local MCP server, for example `npx` with the arguments `-y`, `@modelcontextprotocol/server-filesystem` and a folder.
 

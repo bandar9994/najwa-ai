@@ -176,6 +176,47 @@ test('Connectors: tools for the model, read-only ones run freely, others wait fo
   }
 });
 
+test('Connectors: "Always allow", and "Allow everything without asking" from the start', async () => {
+  const gh = await fakeGitHub();
+  const hub = connectorHub({ transportFor });
+  try {
+    const github = { id: 'c1', name: 'GitHub', kind: 'url', url: gh.url, token: TOKEN, enabled: true };
+    const pr = { title: 'Fix typo' };
+
+    // "Always allow" on one question: nothing else from that connector asks, in this reply.
+    const asked = [];
+    const allowed = new Set();
+    let set = await hub.toolset([github], { approve: async (a) => { asked.push(a); return 'always'; }, allowed });
+    assert.strictEqual((await set.run('github__create_pull_request', pr)).text, 'Opened PR #39: Fix typo');
+    assert.strictEqual(asked[0].connectorId, 'c1');
+    assert.strictEqual((await set.run('github__create_pull_request', pr)).text, 'Opened PR #39: Fix typo');
+    assert.strictEqual(asked.length, 1);
+    assert.ok(allowed.has('c1/*'));
+
+    // Allowed from the start (the setting): never asks, and the model is told not to stop.
+    const never = async () => assert.fail('asked although everything is allowed');
+    set = await hub.toolset([{ ...github, autoApprove: true }], { approve: never, allowed: new Set() });
+    assert.strictEqual((await set.run('github__create_pull_request', pr)).text, 'Opened PR #39: Fix typo');
+    const note = connectorsNote('', set);
+    assert.match(note, /allowed everything with GitHub without asking/);
+    assert.doesNotMatch(note, /waits for the user's approval/);
+  } finally {
+    hub.close();
+    gh.server.close();
+  }
+});
+
+test('Local approvals: "Always allow" is offered and passed on', async () => {
+  const { localApprovals } = require('../src/local-approvals');
+  const approvals = localApprovals();
+  const infos = [];
+  const answer = approvals.asker((i) => infos.push(i))({ connectorId: 'c1', title: 'GitHub: Open new pull request', command: '', description: '' });
+  assert.deepStrictEqual(infos[0].choices, ['once', 'session', 'always', 'deny']);
+  assert.strictEqual(infos[0].connectorId, 'c1');
+  assert.strictEqual(approvals.answer({ runId: infos[0].runId, choice: 'always' }), true);
+  assert.strictEqual(await answer, 'always');
+});
+
 test('A question a computer\'s connector asked can be answered from the phone, over the computer link', async () => {
   const { localApprovals } = require('../src/local-approvals');
   const { linkKey, remoteComputers } = require('../src/remote');
