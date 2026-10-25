@@ -425,6 +425,23 @@ const hermesProvider = (doFetch = (...args) => fetch(...args)) => {
     return data.run_id;
   }
 
+  // Hands the running agent a message. False when it can't take one (the
+  // run is ending, or this Hermes has no steering).
+  async function steerRun(cfg, runId, text) {
+    try {
+      const res = await doFetch(`${trimSlash(cfg.baseUrl)}/runs/${encodeURIComponent(runId)}/steer`, {
+        method: 'POST',
+        headers: hermesHeaders(cfg),
+        body: JSON.stringify({ input: text })
+      });
+      if (!res.ok) return false;
+      const data = await res.json().catch(() => ({}));
+      return data.accepted !== false;
+    } catch {
+      return false;
+    }
+  }
+
   // Follows a run's events until it finishes, reconnecting when the
   // connection drops. Resolves with { output, missed } (missed: some of the
   // reply may not have arrived) or throws.
@@ -534,7 +551,9 @@ const hermesProvider = (doFetch = (...args) => fetch(...args)) => {
           await wait(RUN_RECONNECT_MS[tries++], signal);
         }
       }
-      if (end.event === 'run.completed') return { output: typeof end.output === 'string' ? end.output : '', missed };
+      // pending_steer: what the user added that the agent never got to read.
+      const pendingSteer = typeof end.pending_steer === 'string' ? end.pending_steer : '';
+      if (end.event === 'run.completed') return { output: typeof end.output === 'string' ? end.output : '', missed, pendingSteer };
       if (end.event === 'run.cancelled') {
         if (signal && signal.aborted) throw abortError();
         throw new Error('Hermes stopped this run before it finished.');
@@ -617,7 +636,16 @@ const hermesProvider = (doFetch = (...args) => fetch(...args)) => {
         const stopReason = await chatCompletions(cfg, req, w, signal, onInfo);
         return { text: w.text, stopReason };
       }
-      const { output, missed } = await followRun(cfg, runId, w, signal, onInfo);
+      // Messages the user sends while the agent works reach it after its
+      // current step (POST /v1/runs/{id}/steer).
+      if (req.steering) req.steering.send = (text) => steerRun(cfg, runId, text);
+      let followed;
+      try {
+        followed = await followRun(cfg, runId, w, signal, onInfo);
+      } finally {
+        if (req.steering) req.steering.send = null;
+      }
+      const { output, missed, pendingSteer } = followed;
       const answer = w.answered ? w.text.slice(w.answerAt) : '';
       // Pictures come only with the finished answer: its MEDIA: files as
       // inline images (streamed text has just their paths on Hermes' computer).
@@ -633,7 +661,7 @@ const hermesProvider = (doFetch = (...args) => fetch(...args)) => {
         }
       }
       w.close();
-      return { text: w.text, stopReason: 'end_turn' };
+      return { text: w.text, stopReason: 'end_turn', ...(pendingSteer ? { pendingSteer } : {}) };
     },
 
     // choice: 'once' | 'session' | 'always' | 'deny'

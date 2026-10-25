@@ -80,6 +80,11 @@ const anthropicKind = {
         return { type: 'tool_result', tool_use_id: c.id, content: blocks, ...(r.error ? { is_error: true } : {}) };
       })
     }];
+  },
+
+  // A message from the user, after the results (in the same turn).
+  say(extra, text) {
+    extra[extra.length - 1].content.push({ type: 'text', text });
   }
 };
 
@@ -169,6 +174,10 @@ const openaiKind = (compatible) => ({
       });
     }
     return out;
+  },
+
+  say(extra, text) {
+    extra.push({ role: 'user', content: text });
   }
 });
 
@@ -235,6 +244,10 @@ const ollamaKind = {
       const pic = this.vision && dataUrlParts(r.image);
       return { role: 'tool', tool_name: c.name, content: r.text || '(no text)', ...(pic ? { images: [pic.data] } : {}) };
     });
+  },
+
+  say(extra, text) {
+    extra.push({ role: 'user', content: text });
   }
 };
 
@@ -253,15 +266,32 @@ async function chatWithTools({ kind, cfg, req, onDelta, signal, onInfo = () => {
   const k = Object.create(KINDS[kind]); // per reply (Ollama remembers whether the model can see)
   const w = replyWriter(onDelta);
   const extra = [];
+  // Messages the user sends meanwhile: read by the model after the current
+  // step, once it's working with tools. Before that (just answering), the app
+  // interrupts the reply instead, so it's refused here.
+  const inbox = [];
+  const working = { yes: false };
+  if (req.steering) req.steering.send = (text, id) => working.yes && inbox.push({ text, id }) > 0;
+  try {
+    return await toolLoop({ k, cfg, req, w, extra, inbox, working, signal, onInfo, tools });
+  } finally {
+    if (req.steering) req.steering.send = null;
+  }
+}
+
+async function toolLoop({ k, cfg, req, w, extra, inbox, working, signal, onInfo, tools }) {
   let turn;
   for (let step = 0; ; step++) {
     try {
       turn = await k.turn(cfg, req, tools.defs, extra, w, signal);
     } catch (err) {
-      if (err instanceof ToolsUnsupported && step === 0 && !w.text) return { fallback: true };
+      if (err instanceof ToolsUnsupported && step === 0 && !w.text) {
+        return { fallback: true, ...(inbox.length ? { pendingSteer: inbox.map((m) => m.text).join('\n') } : {}) };
+      }
       throw err;
     }
     if (!turn.calls.length) break;
+    working.yes = true;
     extra.push(...turn.assistant);
     w.gap();
     const results = [];
@@ -286,9 +316,16 @@ async function chatWithTools({ kind, cfg, req, onDelta, signal, onInfo = () => {
       results.push(r);
     }
     extra.push(...k.results(turn.calls, results));
+    if (inbox.length) {
+      const said = inbox.splice(0);
+      k.say(extra, `[The user sent this while you were working]\n${said.map((m) => m.text).join('\n\n')}`);
+      for (const m of said) onInfo({ kind: 'steer', id: m.id, status: 'read' });
+    }
   }
   w.close();
-  return { text: w.text, stopReason: turn.stopReason, stats: turn.stats };
+  // Sent too late for the model to read: the app sends it as the next message.
+  const pendingSteer = inbox.map((m) => m.text).join('\n');
+  return { text: w.text, stopReason: turn.stopReason, stats: turn.stats, ...(pendingSteer ? { pendingSteer } : {}) };
 }
 
 // Several sets of tools (the browser, each connector) as one.

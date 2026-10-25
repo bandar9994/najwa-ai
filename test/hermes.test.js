@@ -288,7 +288,7 @@ test('Phone network code: an answer that arrives before request() returns, Stop,
 // events, replayed after Last-Event-ID, and a pollable status once the run's
 // live events are gone.
 function fakeHermesRuns({ script = 'drop' } = {}) {
-  const seen = { posts: [], lastIds: [], stops: 0, approvals: [] };
+  const seen = { posts: [], lastIds: [], stops: 0, approvals: [], steers: [] };
   const run = { status: 'running', output: 'Freed 2.4 GB.' };
   const events = [
     { event: 'reasoning.available', text: 'Look for caches.' },
@@ -318,6 +318,11 @@ function fakeHermesRuns({ script = 'drop' } = {}) {
         run.status = 'cancelled';
         return send(200, { status: 'stopping' });
       }
+      if (req.url === '/v1/runs/run_1/steer') {
+        if (run.status !== 'running') return send(409, { error: { message: 'Run is not currently accepting steer input' } });
+        seen.steers.push(JSON.parse(body).input);
+        return send(200, { object: 'hermes.run.steer', run_id: 'run_1', accepted: true });
+      }
       if (req.url === '/v1/runs/run_1/approval') {
         seen.approvals.push(JSON.parse(body));
         return send(200, { ok: true });
@@ -346,6 +351,16 @@ function fakeHermesRuns({ script = 'drop' } = {}) {
           { event: 'message.delta', delta: 'MEDIA:/home/me/tv.png\n\nTaken just now.' },
           { event: 'run.completed', output: `${pic}\n\nTaken just now.` }
         ].entries()) res.write(`id: ${seq}\ndata: ${JSON.stringify({ ...e, run_id: 'run_1', seq })}\n\n`);
+        return res.end(': stream closed\n\n');
+      }
+      if (script === 'steer') {
+        // The agent reads what the user sent after its step; one sent too late comes back.
+        res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+        res.write(`id: 0\ndata: ${JSON.stringify({ event: 'message.delta', run_id: 'run_1', seq: 0, delta: 'Checking the disk. ' })}\n\n`);
+        while (seen.steers.length < 2) await sleep(5);
+        res.write(`id: 1\ndata: ${JSON.stringify({ event: 'message.delta', run_id: 'run_1', seq: 1, delta: `Also ${seen.steers[0]}.` })}\n\n`);
+        run.status = 'completed';
+        res.write(`id: 2\ndata: ${JSON.stringify({ event: 'run.completed', run_id: 'run_1', seq: 2, output: `Also ${seen.steers[0]}.`, pending_steer: seen.steers[1] })}\n\n`);
         return res.end(': stream closed\n\n');
       }
       if (script === 'failed') {
@@ -398,6 +413,27 @@ test('Hermes runs: a dropped connection reconnects and picks up where it left of
       conversation_history: [{ role: 'user', content: 'Hi' }, { role: 'assistant', content: 'Hello!' }]
     });
     assert.ok(post.idempotency);
+  } finally {
+    h.server.close();
+  }
+});
+
+test('Hermes runs: messages sent while the agent works, and one sent too late', async () => {
+  const h = await fakeHermesRuns({ script: 'steer' });
+  try {
+    const steering = { send: null };
+    const cfg = { baseUrl: h.url, apiKey: KEY };
+    const done = hermes.streamChat(cfg, { model: 'hermes-agent', messages: [{ role: 'user', content: 'Clean' }], steering }, () => {});
+    while (!steering.send) await sleep(5);
+    assert.strictEqual(await steering.send('the Downloads folder'), true);
+    assert.strictEqual(await steering.send('and the logs'), true);
+    const result = await done;
+    assert.deepStrictEqual(h.seen.steers, ['the Downloads folder', 'and the logs']);
+    assert.strictEqual(result.text, 'Checking the disk. Also the Downloads folder.');
+    // The agent finished before reading the second: the app sends it next.
+    assert.strictEqual(result.pendingSteer, 'and the logs');
+    // Once the run is over, nothing more is taken.
+    assert.strictEqual(steering.send, null);
   } finally {
     h.server.close();
   }

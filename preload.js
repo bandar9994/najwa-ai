@@ -210,6 +210,7 @@ contextBridge.exposeInMainWorld('balimda', {
     models: invoke('ai:models'),
     chat: invoke('ai:chat'),
     abort: invoke('ai:abort'),
+    steer: invoke('ai:steer'),
     approve: invoke('ai:approve'),
     onEvent(cb) {
       const listener = (_e, evt) => cb(evt);

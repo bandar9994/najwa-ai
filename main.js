@@ -41,6 +41,7 @@ let storage;
 let sync;
 let mainWindow;
 const activeRequests = new Map();
+const activeSteering = new Map(); // requestId -> { send } for messages sent mid-reply
 
 // Voice chat: Whisper (built by scripts/build-whisper.js, packed into the
 // app's resources) recognises speech on this computer.
@@ -265,7 +266,8 @@ async function runChat(providerId, req, onDelta, signal, onInfo) {
     messages: normalizeMessages(req.messages || []),
     temperature: req.temperature,
     maxTokens: req.maxTokens,
-    think: req.think
+    think: req.think,
+    steering: req.steering
   };
   // Tools for models that can use them (also for the phone, when it uses this
   // computer's models): "Let models use a browser" (this computer's hidden
@@ -290,6 +292,11 @@ async function runChat(providerId, req, onDelta, signal, onInfo) {
       if (tools.defs.length) {
         const result = await chatWithTools({ kind: TOOL_KINDS[providerId], cfg, req: { ...request, system }, onDelta, signal, onInfo, tools });
         if (!result.fallback) return result;
+        // Messages sent meanwhile go as the next message.
+        if (result.pendingSteer) {
+          const plain = await provider.impl.streamChat(cfg, request, onDelta, signal, onInfo);
+          return { ...plain, pendingSteer: result.pendingSteer };
+        }
       }
     } finally {
       if (browser) browser.close();
@@ -567,8 +574,11 @@ function registerIpc() {
     if (!PROVIDERS[providerId]) throw new Error(`Unknown provider: ${providerId}`);
     const controller = new AbortController();
     activeRequests.set(requestId, controller);
+    // Set by the provider while it can take messages mid-reply (see ai:steer).
+    const steering = { send: null };
+    activeSteering.set(requestId, steering);
     try {
-      const result = await runChat(providerId, req, (text) => send('ai:event', { requestId, type: 'delta', text }), controller.signal,
+      const result = await runChat(providerId, { ...req, steering }, (text) => send('ai:event', { requestId, type: 'delta', text }), controller.signal,
         (info) => send('ai:event', { requestId, type: 'info', ...info }));
       return { ok: true, ...result };
     } catch (err) {
@@ -576,6 +586,19 @@ function registerIpc() {
       return { ok: false, error: err.message || String(err) };
     } finally {
       activeRequests.delete(requestId);
+      activeSteering.delete(requestId);
+    }
+  });
+
+  // A message sent while a reply is written: true if the model will read it
+  // during this reply (Hermes, or a reply using tools); false to send it after.
+  ipcMain.handle('ai:steer', async (_e, requestId, text, id) => {
+    const s = activeSteering.get(requestId);
+    if (!s || !s.send) return false;
+    try {
+      return !!(await s.send(String(text || ''), id));
+    } catch {
+      return false;
     }
   });
 

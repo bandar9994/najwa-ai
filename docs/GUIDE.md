@@ -192,6 +192,11 @@ Tokens stay on the device (encrypted on computers) and aren't synced. When your 
 
 In **Settings → General → How replies appear**: **A sentence at a time** (the default, easy to read), **Word by word**, or **All at once, when finished**. Either way, the page stays still while a reply is written: your message moves to the top and the reply appears below it. The ↓ button jumps to the end.
 
+You can keep writing while a reply is written, as in Claude:
+- **Hermes Agent, and models working with the browser or connectors**, read your message after their current step. It shows among the reply's steps (💬 You: …, then **read ✓**), and the reply takes it into account. If the agent finishes before reading it, it goes as your next message.
+- **Otherwise** your message waits above the message box and goes as soon as the reply is done (several go together as one). **Send now** stops the reply where it is (marked "Stopped here to answer your next message") and sends it right away. ✎ takes it back to edit.
+- The red ■ stops the reply; anything waiting then goes back into the box instead of being sent.
+
 ### Using it away from home
 
 To use your computer's models from your phone anywhere (not only on your home Wi-Fi), install [Tailscale](https://tailscale.com) on both the computer and the phone and sign in with the same account. Najwa AI finds the computer over Tailscale by itself.

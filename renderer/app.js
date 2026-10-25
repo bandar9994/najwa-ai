@@ -34,6 +34,8 @@ const el = {
   messages: $('#messages'),
   input: $('#input'),
   sendBtn: $('#sendBtn'),
+  stopBtn: $('#stopBtn'),
+  queued: $('#queued'),
   micBtn: $('#micBtn'),
   attachBtn: $('#attachBtn'),
   attachInput: $('#attachInput'),
@@ -789,7 +791,10 @@ const APPROVAL_LABELS = { once: 'Allow once', session: 'Allow for this chat', al
 const APPROVAL_DONE = { once: 'Allowed once', session: 'Allowed for this chat', always: 'Always allowed', deny: 'Denied', expired: 'Not answered in time' };
 
 function agentEvent(chat, msg, evt) {
-  if (evt.kind === 'tool') {
+  if (evt.kind === 'steer') {
+    const step = (msg.tools || []).find((t) => t.steer && t.id === evt.id);
+    if (step && (step.status === 'sent' || step.status === 'sending')) step.status = 'read';
+  } else if (evt.kind === 'tool') {
     msg.tools = msg.tools || [];
     const known = evt.id && msg.tools.find((t) => t.id === evt.id);
     if (known) {
@@ -855,10 +860,17 @@ function agentSteps(msg) {
   if (!tools.length && !approvals.length && !msg.agentStatus) return null;
   const chat = [...S.cache.values()].find((c) => c.messages.includes(msg)) || S.current;
   const wrap = h('div', { class: 'agent' });
-  const toolLine = (t) => h('div', { class: `agent-step ${t.status}` },
+  const stateOf = (t) => {
+    if (t.steer) return t.status === 'read' ? 'read ✓' : 'reads it after this step';
+    return t.status === 'running' ? 'working…' : t.status === 'stopped' ? 'stopped' : '✓';
+  };
+  const toolLine = (t) => h('div', { class: `agent-step ${t.status}${t.steer ? ' steer' : ''}` },
     h('span', { class: 'agent-icon', text: t.emoji || '🔧' }),
-    h('span', { class: 'agent-label', text: t.label }),
-    h('span', { class: 'agent-state', text: t.status === 'running' ? 'working…' : t.status === 'stopped' ? 'stopped' : '✓' }));
+    h('span', { class: 'agent-label', dir: 'auto', text: t.label }),
+    h('span', { class: 'agent-state', text: stateOf(t) }));
+  const used = tools.filter((t) => !t.steer).length;
+  const said = tools.length - used;
+  const summary = [used ? `Used ${used} tool${used === 1 ? '' : 's'}` : '', said ? `${said} message${said === 1 ? '' : 's'} from you` : ''].filter(Boolean).join(' · ');
   if (tools.length) {
     if (msg.pending) {
       // While working, show the latest steps.
@@ -866,7 +878,7 @@ function agentSteps(msg) {
       wrap.append(...tools.slice(-5).map(toolLine));
     } else {
       wrap.append(h('details', { class: 'agent-done' },
-        h('summary', { text: `Used ${tools.length} tool${tools.length === 1 ? '' : 's'}` }),
+        h('summary', { text: summary }),
         ...tools.map(toolLine)));
     }
   }
@@ -993,12 +1005,135 @@ function updateComposer() {
   }
 }
 
-// "Send", or "Stop" while a reply is written.
+// While a reply is written: Stop, and Send as soon as there's something to
+// send (it waits for the reply, see queued).
 function updateSendButton() {
   const streaming = isStreaming(S.current);
-  el.sendBtn.textContent = streaming ? 'Stop' : 'Send';
-  el.sendBtn.title = streaming ? 'Stop' : 'Send';
-  el.sendBtn.classList.toggle('danger', streaming);
+  el.stopBtn.hidden = !streaming;
+  el.sendBtn.hidden = streaming && !el.input.value.trim() && !pictures.length;
+  el.sendBtn.title = streaming ? 'Send (it waits for the reply, or the agent reads it after its current step)' : 'Send';
+  drawQueued();
+}
+
+// ---------------------------------------------------------------------------
+// messages written while a reply is still coming: they wait above the box
+// and are sent together as soon as the reply is done
+
+const queued = new Map(); // chat -> [{ text, images }]
+
+function drawQueued() {
+  const list = (S.current && queued.get(S.current)) || [];
+  el.queued.hidden = !list.length;
+  el.queued.replaceChildren(...list.map((q, i) => h('div', { class: 'queued-item' },
+    h('div', { class: 'queued-body' },
+      h('span', { class: 'queued-label', text: 'Sends when the reply is done' }),
+      h('span', { class: 'queued-text', dir: 'auto', text: q.text || (q.images.length === 1 ? '1 picture' : `${q.images.length} pictures`) })),
+    h('button', {
+      class: 'btn queued-now',
+      title: 'Stop the reply and send this now',
+      text: 'Send now',
+      onclick: () => interruptFor(S.current)
+    }),
+    h('button', {
+      class: 'icon-btn',
+      title: 'Edit (moves it back to the box)',
+      'aria-label': 'Edit this message',
+      text: '✎',
+      onclick: () => {
+        list.splice(i, 1);
+        if (!list.length) queued.delete(S.current);
+        putBack(S.current, [q]);
+      }
+    }))));
+}
+
+// "Send now": the reply stops where it is (kept, and marked so) and what was
+// waiting goes right away.
+function interruptFor(chat) {
+  for (const [requestId, r] of S.requests) {
+    if (r.chat !== chat) continue;
+    r.interrupted = true;
+    r.stopped = true;
+    api.ai.abort(requestId);
+  }
+}
+
+// Waiting messages go back into the box (edited, or the reply was stopped).
+function putBack(chat, list) {
+  const text = list.map((q) => q.text).filter(Boolean).join('\n\n');
+  if (S.current === chat) {
+    el.input.value = [text, el.input.value.trim()].filter(Boolean).join('\n\n');
+    pictures = [...list.flatMap((q) => q.images), ...pictures].slice(0, MAX_PICTURES);
+    drawPictures();
+    autoGrow();
+    saveDraft(chat.id, el.input.value);
+    el.input.focus();
+  } else if (text) {
+    saveDraft(chat.id, text);
+  }
+  updateSendButton();
+}
+
+// A message sent while a reply is written, as in Claude. Hermes, and replies
+// working with tools, read it after their current step, so it shows among
+// the reply's steps. Otherwise it waits above the box and goes when the reply
+// is done, unless "Send now" interrupts the reply (see interruptFor).
+async function sendWhileReplying(chat, text, images) {
+  const found = [...S.requests].find(([, r]) => r.chat === chat);
+  if (found && text && !images.length && api.ai.steer) {
+    const [requestId, r] = found;
+    const step = { id: uid(), emoji: '💬', label: `You: ${text.replace(/\s+/g, ' ')}`.slice(0, 500), text: text.slice(0, 8000), steer: true, status: 'sending' };
+    (r.msg.tools = r.msg.tools || []).push(step);
+    scheduleMessageRender(chat, r.msg);
+    const taken = await api.ai.steer(requestId, step.text, step.id).catch(() => false);
+    // (settled meanwhile when the reply ended first, see settleSteers)
+    if (step.status !== 'sending') return;
+    if (taken) {
+      step.status = 'sent';
+      scheduleMessageRender(chat, r.msg);
+      saveChatSoon(chat, 1000);
+      return;
+    }
+    r.msg.tools.splice(r.msg.tools.indexOf(step), 1);
+    scheduleMessageRender(chat, r.msg);
+  }
+  if (isStreaming(chat)) {
+    queued.set(chat, [...(queued.get(chat) || []), { text, images }]);
+  } else {
+    // The reply ended meanwhile: this is simply the next message.
+    queued.set(chat, [{ text, images }]);
+    sendQueued(chat, { ok: true });
+  }
+}
+
+// When a reply ends: messages it read are marked read; ones it never got to
+// (it finished first) wait to go as the next message.
+function settleSteers(chat, msg, res) {
+  const steers = (msg.tools || []).filter((t) => t.steer && (t.status === 'sent' || t.status === 'sending'));
+  if (!steers.length) return;
+  const unread = steers.filter((t) => t.status === 'sending' || !res.ok || res.aborted ||
+    (typeof res.pendingSteer === 'string' && res.pendingSteer.includes(t.text)));
+  for (const t of steers) t.status = unread.includes(t) ? 'moved' : 'read';
+  if (!unread.length) return;
+  msg.tools = msg.tools.filter((t) => !unread.includes(t));
+  queued.set(chat, [...unread.map((t) => ({ text: t.text, images: [] })), ...(queued.get(chat) || [])]);
+}
+
+// After a reply: send what was written meanwhile, as one message.
+function sendQueued(chat, res) {
+  const list = queued.get(chat);
+  if (!list || !list.length) return;
+  queued.delete(chat);
+  if (S.cache.get(chat.id) !== chat) return; // the chat was deleted
+  if (!res.ok || res.aborted) {
+    putBack(chat, list);
+    if (S.current === chat) toast('Your message wasn\'t sent. It\'s back in the box.');
+    return;
+  }
+  const text = list.map((q) => q.text).filter(Boolean).join('\n\n');
+  const images = list.flatMap((q) => q.images);
+  chat.messages.push({ id: uid(), role: 'user', content: text, ...(images.length ? { images } : {}), createdAt: Date.now() });
+  runCompletion(chat);
 }
 
 // ---------------------------------------------------------------------------
@@ -1662,11 +1797,14 @@ function historyFor(chat, uptoIndex, model) {
   // Pages read for the last two messages with links go in whole; earlier ones as a note.
   const withLinks = shown.filter((m) => m.role === 'user' && m.links && m.links.length).slice(-2);
   const linksOn = readsLinks(model);
-  let msgs = shown.map((m) => {
+  let msgs = shown.map((m, i) => {
     if (m.role === 'assistant') return { role: m.role, content: splitThinking(m.content).answer.trim() };
     const images = m.role === 'user' ? picturesOf(m) : [];
     const pages = linksOn && m.links && m.links.length ? linkContext(m.links, withLinks.includes(m), model) : '';
-    const content = pages ? `${m.content}\n\n${pages}` : m.content;
+    // What the user added while the reply was written (and it read).
+    const next = shown[i + 1];
+    const added = next && next.role === 'assistant' ? (next.tools || []).filter((t) => t.steer && t.status === 'read').map((t) => t.text) : [];
+    const content = [m.content, ...added, pages].filter(Boolean).join('\n\n');
     return images.length ? { role: m.role, content, images } : { role: m.role, content };
   });
   const limit = Number(S.settings.historyLimit) || 0;
@@ -1675,15 +1813,24 @@ function historyFor(chat, uptoIndex, model) {
 }
 
 async function send() {
-  if (isStreaming(S.current)) {
-    stopCurrent();
-    return;
-  }
   const text = el.input.value.trim();
   const images = pictures.slice();
   if (!text && !images.length) return;
-  stopReading();
   dropDictation();
+  // A reply is still coming: the model reads this mid-way if it can,
+  // otherwise it waits and goes when the reply is done.
+  if (isStreaming(S.current)) {
+    const chat = S.current;
+    pictures = [];
+    drawPictures();
+    el.input.value = '';
+    autoGrow();
+    saveDraft(chat.id, '');
+    await sendWhileReplying(chat, text, images);
+    updateSendButton();
+    return;
+  }
+  stopReading();
   const model = currentModel();
   if (!model) {
     toast('Choose a model first (top right).');
@@ -1780,12 +1927,19 @@ async function runCompletion(chat) {
   msg.pending = false;
   for (const a of msg.approvals || []) if (a.state === 'pending' || a.state === 'sending') a.state = 'expired';
   for (const t of msg.tools || []) if (t.status === 'running') t.status = res.ok && !res.aborted ? 'completed' : 'stopped';
+  settleSteers(chat, msg, res);
   delete msg.agentStatus;
   delete msg.runningOn;
   delete msg.waiting;
   if (!res.ok) msg.error = `Error: ${res.error}`;
   if (res.stats) msg.stats = res.stats;
   if (res.ok && res.stopReason === 'max_tokens') msg.notice = 'The reply was cut off at the length limit. Ask it to continue, or raise "Max tokens" in Settings.';
+  if (request.interrupted) {
+    msg.notice = 'Stopped here to answer your next message.';
+    // Interrupted before it wrote anything: no need to keep an empty reply.
+    const at = chat.messages.indexOf(msg);
+    if (at >= 0 && !msg.content.trim() && !(msg.tools || []).length) chat.messages.splice(at, 1);
+  }
   voiceReplyUpdated(msg);
   chat.updatedAt = Date.now();
   await saveChatNow(chat);
@@ -1805,6 +1959,9 @@ async function runCompletion(chat) {
     const titler = isAgent(model) ? backgroundModel(null) : model;
     if (titler) generateTitle(chat, titler);
   }
+
+  // Interrupted for a new message: that goes now, like a finished reply.
+  sendQueued(chat, request.interrupted ? { ok: true } : res);
 }
 
 async function generateTitle(chat, model = chat.model) {
@@ -2962,6 +3119,7 @@ function bindEvents() {
   el.modelSelect.addEventListener('change', onModelChange);
   el.assistantSelect.addEventListener('change', onAssistantChange);
   el.sendBtn.addEventListener('click', send);
+  el.stopBtn.addEventListener('click', stopCurrent);
   el.jumpBtn.addEventListener('click', jumpToLatest);
   el.messages.addEventListener('scroll', updateJumpButton, { passive: true });
   // The screen changes size (a phone's keyboard, a resized window): keep the
@@ -3004,7 +3162,7 @@ function bindEvents() {
       const wantsSend = S.settings.sendOnEnter ? !e.shiftKey : (e.ctrlKey || e.metaKey);
       if (wantsSend) {
         e.preventDefault();
-        if (!isStreaming(S.current)) send();
+        send();
       }
     }
   });
