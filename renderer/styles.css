@@ -333,6 +333,17 @@ details.thinking summary { cursor: pointer; }
 /* The microphone in the message box; red and pulsing while it listens. */
 .mic-btn { align-self: flex-end; display: grid; place-items: center; }
 .attach-btn { align-self: flex-end; display: grid; place-items: center; }
+/* Stop, next to Send while a reply is written. */
+.icon-btn.stop-btn { align-self: flex-end; display: grid; place-items: center; width: 34px; height: 34px; padding: 0; color: #fff; background: var(--danger); border-radius: 50%; }
+.icon-btn.stop-btn:hover { filter: brightness(1.08); background: var(--danger); color: #fff; }
+.stop-btn[hidden] { display: none; }
+/* Messages written while a reply is still coming: sent when it's done. */
+.queued { max-width: 820px; margin: 0 auto 8px; display: flex; flex-direction: column; gap: 6px; }
+.queued[hidden] { display: none; }
+.queued-item { display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 12px; border: 1px dashed var(--border); border-radius: 12px; background: var(--bg-user); }
+.queued-body { flex: 1; min-width: 0; }
+.queued-label { display: block; font-size: 11px; color: var(--text-dim); }
+.queued-text { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .attachments { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 8px; }
 .attachments[hidden] { display: none; }
 .attachment { position: relative; }

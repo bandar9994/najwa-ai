@@ -34,6 +34,8 @@ const el = {
   messages: $('#messages'),
   input: $('#input'),
   sendBtn: $('#sendBtn'),
+  stopBtn: $('#stopBtn'),
+  queued: $('#queued'),
   micBtn: $('#micBtn'),
   attachBtn: $('#attachBtn'),
   attachInput: $('#attachInput'),
@@ -993,12 +995,73 @@ function updateComposer() {
   }
 }
 
-// "Send", or "Stop" while a reply is written.
+// While a reply is written: Stop, and Send as soon as there's something to
+// send (it waits for the reply, see queued).
 function updateSendButton() {
   const streaming = isStreaming(S.current);
-  el.sendBtn.textContent = streaming ? 'Stop' : 'Send';
-  el.sendBtn.title = streaming ? 'Stop' : 'Send';
-  el.sendBtn.classList.toggle('danger', streaming);
+  el.stopBtn.hidden = !streaming;
+  el.sendBtn.hidden = streaming && !el.input.value.trim() && !pictures.length;
+  el.sendBtn.title = streaming ? 'Send when this reply is done' : 'Send';
+  drawQueued();
+}
+
+// ---------------------------------------------------------------------------
+// messages written while a reply is still coming: they wait above the box
+// and are sent together as soon as the reply is done
+
+const queued = new Map(); // chat -> [{ text, images }]
+
+function drawQueued() {
+  const list = (S.current && queued.get(S.current)) || [];
+  el.queued.hidden = !list.length;
+  el.queued.replaceChildren(...list.map((q, i) => h('div', { class: 'queued-item' },
+    h('div', { class: 'queued-body' },
+      h('span', { class: 'queued-label', text: 'Sends when the reply is done' }),
+      h('span', { class: 'queued-text', dir: 'auto', text: q.text || (q.images.length === 1 ? '1 picture' : `${q.images.length} pictures`) })),
+    h('button', {
+      class: 'icon-btn',
+      title: 'Edit (moves it back to the box)',
+      'aria-label': 'Edit this message',
+      text: '✎',
+      onclick: () => {
+        list.splice(i, 1);
+        if (!list.length) queued.delete(S.current);
+        putBack(S.current, [q]);
+      }
+    }))));
+}
+
+// Waiting messages go back into the box (edited, or the reply was stopped).
+function putBack(chat, list) {
+  const text = list.map((q) => q.text).filter(Boolean).join('\n\n');
+  if (S.current === chat) {
+    el.input.value = [text, el.input.value.trim()].filter(Boolean).join('\n\n');
+    pictures = [...list.flatMap((q) => q.images), ...pictures].slice(0, MAX_PICTURES);
+    drawPictures();
+    autoGrow();
+    saveDraft(chat.id, el.input.value);
+    el.input.focus();
+  } else if (text) {
+    saveDraft(chat.id, text);
+  }
+  updateSendButton();
+}
+
+// After a reply: send what was written meanwhile, as one message.
+function sendQueued(chat, res) {
+  const list = queued.get(chat);
+  if (!list || !list.length) return;
+  queued.delete(chat);
+  if (S.cache.get(chat.id) !== chat) return; // the chat was deleted
+  if (!res.ok || res.aborted) {
+    putBack(chat, list);
+    if (S.current === chat) toast('Your message wasn\'t sent. It\'s back in the box.');
+    return;
+  }
+  const text = list.map((q) => q.text).filter(Boolean).join('\n\n');
+  const images = list.flatMap((q) => q.images);
+  chat.messages.push({ id: uid(), role: 'user', content: text, ...(images.length ? { images } : {}), createdAt: Date.now() });
+  runCompletion(chat);
 }
 
 // ---------------------------------------------------------------------------
@@ -1675,15 +1738,24 @@ function historyFor(chat, uptoIndex, model) {
 }
 
 async function send() {
-  if (isStreaming(S.current)) {
-    stopCurrent();
-    return;
-  }
   const text = el.input.value.trim();
   const images = pictures.slice();
   if (!text && !images.length) return;
-  stopReading();
   dropDictation();
+  // A reply is still coming: this waits and goes when it's done.
+  if (isStreaming(S.current)) {
+    const list = queued.get(S.current) || [];
+    list.push({ text, images });
+    queued.set(S.current, list);
+    pictures = [];
+    drawPictures();
+    el.input.value = '';
+    autoGrow();
+    saveDraft(S.current.id, '');
+    updateSendButton();
+    return;
+  }
+  stopReading();
   const model = currentModel();
   if (!model) {
     toast('Choose a model first (top right).');
@@ -1805,6 +1877,8 @@ async function runCompletion(chat) {
     const titler = isAgent(model) ? backgroundModel(null) : model;
     if (titler) generateTitle(chat, titler);
   }
+
+  sendQueued(chat, res);
 }
 
 async function generateTitle(chat, model = chat.model) {
@@ -2962,6 +3036,7 @@ function bindEvents() {
   el.modelSelect.addEventListener('change', onModelChange);
   el.assistantSelect.addEventListener('change', onAssistantChange);
   el.sendBtn.addEventListener('click', send);
+  el.stopBtn.addEventListener('click', stopCurrent);
   el.jumpBtn.addEventListener('click', jumpToLatest);
   el.messages.addEventListener('scroll', updateJumpButton, { passive: true });
   // The screen changes size (a phone's keyboard, a resized window): keep the
@@ -3004,7 +3079,7 @@ function bindEvents() {
       const wantsSend = S.settings.sendOnEnter ? !e.shiftKey : (e.ctrlKey || e.metaKey);
       if (wantsSend) {
         e.preventDefault();
-        if (!isStreaming(S.current)) send();
+        send();
       }
     }
   });
