@@ -7,7 +7,7 @@ name: Model links
 # by hand with a link in "url" to check any other GGUF model the same way.
 on:
   push:
-    branches: ['main', 'claude/**']
+    branches: ['main', 'bandar/**']
     paths: ['mobile/src/native-engine.js', 'mobile/src/on-device.js', 'scripts/check-model-links.js', 'scripts/model-smoke.c', 'native/llama/engine/**', 'android/app/src/main/cpp/**', '.github/workflows/model-links.yml']
   pull_request:
     paths: ['mobile/src/native-engine.js', 'mobile/src/on-device.js', 'scripts/check-model-links.js', 'scripts/model-smoke.c', 'native/llama/engine/**', 'android/app/src/main/cpp/**', '.github/workflows/model-links.yml']
