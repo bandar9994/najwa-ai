@@ -32,11 +32,15 @@ const KDF_ITERATIONS = 310000;
 const CONFIG_FILE = 'sync.json';
 const STATE_FILE = 'sync-state.json';
 const TREE_CHUNK_BYTES = 4 * 1024 * 1024;
+const START_OVER_MS = 10 * 60 * 1000;
 
 const utf8 = new TextEncoder();
 const fromUtf8 = new TextDecoder();
 
 class SyncError extends Error {}
+
+// The synced copy is gone or was replaced: only setting sync up again helps.
+const gone = (message) => Object.assign(new SyncError(message), { gone: true });
 
 // ---- bytes, compression and encryption ---------------------------------------
 
@@ -284,14 +288,16 @@ class GitHubRemote {
 
   async load() {
     const head = await this.head();
-    if (!head) throw new SyncError('The sync repository is empty. Set up sync again.');
+    if (!head) throw gone('The sync repository is empty. Set up sync again.');
     const { tree, files } = await this.gh.files(head);
-    if (!files.has(META_FILE)) throw new SyncError('The sync repository was reset. Set up sync again.');
+    if (!files.has(META_FILE)) throw gone('The sync repository was reset. Set up sync again.');
     const read = (path) => (files.has(path) ? this.gh.text(files.get(path)) : Promise.resolve(null));
     return {
       head,
       tree,
       files,
+      metaRef: files.get(META_FILE),
+      readMeta: () => read(META_FILE),
       indexText: await read(INDEX_FILE),
       readChat: (id) => read(chatPath(id)),
       readShared: () => read(SHARED_FILE)
@@ -310,6 +316,16 @@ class GitHubRemote {
       deletes: deletes.map((d) => chatPath(d.id)).filter((p) => snap.files.has(p)),
       message
     });
+  }
+
+  // Starting over: removes the sync data (the README stays).
+  async erase() {
+    const head = await this.head();
+    if (!head) return;
+    const { tree, files } = await this.gh.files(head);
+    const deletes = [...files.keys()].filter((p) => p !== 'README.md');
+    if (!deletes.length) return;
+    await this.gh.commit({ branch: this.branch, parent: head, baseTree: tree, writes: [], deletes, message: 'Start Najwa AI sync over' });
   }
 }
 
@@ -515,7 +531,7 @@ class DriveRemote {
       }
     }
     if (!byName.has(META_FILE) && !(await this._metaExists())) {
-      throw new SyncError('The sync data in Google Drive was removed. Set up sync again.');
+      throw gone('The sync data in Google Drive was removed. Set up sync again.');
     }
     await pool(extra, 4, (f) => this.remove(f.id).catch(() => {}));
 
@@ -527,9 +543,12 @@ class DriveRemote {
     }
     const sharedFile = byName.get(SHARED_FILE);
     const read = (name) => (byName.has(name) ? this.read(byName.get(name).id) : Promise.resolve(null));
+    const metaRef = byName.has(META_FILE) ? byName.get(META_FILE).id : this.metaId;
     return {
       head,
       files: byName,
+      metaRef,
+      readMeta: () => this.read(metaRef),
       chats,
       shared: sharedFile ? { m: sharedFile.m } : null,
       readChat: (id) => (chats[id] && !chats[id].d ? read(chatPath(id)) : Promise.resolve(null)),
@@ -551,6 +570,17 @@ class DriveRemote {
     // now is not something this device has seen. Returning no head makes the
     // next sync compare everything again instead of assuming it's current.
     return null;
+  }
+
+  // Starting over: removes everything Najwa AI keeps in its folder.
+  async erase() {
+    const files = await this.list();
+    // The list can trail behind a file made a moment ago.
+    if (this.metaId && !files.some((f) => f.id === this.metaId)) files.push({ id: this.metaId });
+    await pool(files, 4, (f) => this.remove(f.id).catch((err) => {
+      if (err.status !== 404) throw err;
+    }));
+    this.metaId = null;
   }
 }
 
@@ -666,7 +696,9 @@ async function keyFromMeta(text, passphrase) {
   if (meta.app !== 'balimda' || meta.format > FORMAT) throw new SyncError('This sync data is from a newer version of Najwa AI. Update the app.');
   const keyBytes = await deriveKeyBytes(passphrase, fromBase64(meta.salt), meta.iterations);
   const check = await unseal(await importKey(keyBytes), meta.check).catch(() => null);
-  if (check !== CHECK_TEXT) throw new SyncError('Wrong sync passphrase. Use the same passphrase you chose on your first device.');
+  if (check !== CHECK_TEXT) {
+    throw Object.assign(new SyncError('Wrong sync passphrase. Use the same passphrase you chose on your first device.'), { wrongPassphrase: true });
+  }
   return keyBytes;
 }
 
@@ -702,6 +734,7 @@ class Sync {
     this.again = false;
     this.timer = null;
     this.lastPush = 0;
+    this.held = null;     // { cfg, remote, at }: a sign-in whose passphrase didn't fit
   }
 
   async load() {
@@ -732,8 +765,15 @@ class Sync {
     return this.config ? this.config.key : null;
   }
 
+  // After a wrong passphrase, for a few minutes: the destination that could be
+  // started over with the new passphrase instead.
+  _held() {
+    return this.held && Date.now() - this.held.at < START_OVER_MS ? this.held : null;
+  }
+
   status() {
     const d = this.remote ? this.remote.describe() : {};
+    const held = !this.config && this._held();
     return {
       configured: !!this.config,
       provider: d.provider || null,
@@ -744,7 +784,9 @@ class Sync {
       running: !!this.running,
       lastSync: this.state.lastSync || null,
       error: this.state.error || null,
-      offline: !!this.state.offline
+      offline: !!this.state.offline,
+      needsSetup: !!this.state.needsSetup,
+      startOver: held ? held.remote.describe().label : null
     };
   }
 
@@ -771,11 +813,21 @@ class Sync {
   // devices must use the same passphrase.
   //   { provider: 'github', repo, token, passphrase }
   //   { provider: 'gdrive', passphrase }   (signs in to Google)
-  async connect({ provider = 'github', repo, token, passphrase }) {
+  // With startOver, the synced copy is erased first and made again with this
+  // passphrase (for a forgotten one); it reuses the sign-in that was just
+  // refused, so Google doesn't ask again.
+  async connect({ provider = 'github', repo, token, passphrase, startOver = false }) {
     if (String(passphrase || '').length < 8) throw new SyncError('Use a sync passphrase of at least 8 characters.');
     let cfg;
     let remote;
-    if (provider === 'gdrive') {
+    if (startOver) {
+      // Only ever erase the copy whose passphrase was just refused.
+      const held = this._held();
+      if (!held || held.cfg.provider !== provider || (provider === 'github' && held.cfg.repo !== parseRepo(repo))) {
+        throw new SyncError('Try turning on sync again first.');
+      }
+      ({ cfg, remote } = held);
+    } else if (provider === 'gdrive') {
       if (!this.googleAuth) throw new SyncError('Google sign-in is not available in this version of the app.');
       const signed = await this.googleAuth.signIn();
       cfg = { provider, account: signed.account || null, secret: signed.secret || null };
@@ -792,9 +844,17 @@ class Sync {
       cfg = { provider, repo, branch: remote.branch, token };
     }
 
+    if (startOver) await remote.erase();
     let meta = await remote.readMeta();
     if (!meta) meta = await remote.createMeta(await newMeta(passphrase));
-    const keyBytes = await keyFromMeta(meta, passphrase);
+    let keyBytes;
+    try {
+      keyBytes = await keyFromMeta(meta, passphrase);
+    } catch (err) {
+      if (err.wrongPassphrase) this.held = { cfg, remote, at: Date.now() };
+      throw err;
+    }
+    this.held = null;
     if (remote.metaId) cfg.metaId = remote.metaId;
 
     this.config = { ...cfg, key: toBase64(keyBytes) };
@@ -876,11 +936,13 @@ class Sync {
         await this._syncOnce();
         this.state.error = null;
         this.state.offline = false;
+        this.state.needsSetup = false;
         break;
       } catch (err) {
         if (err.conflict && attempt < 4) continue;
         this.state.error = err.message || String(err);
         this.state.offline = !!err.offline;
+        this.state.needsSetup = !!err.gone;
         break;
       }
     }
@@ -893,7 +955,7 @@ class Sync {
     const storage = this.storage;
 
     const head = await remote.head();
-    if (!head) throw new SyncError('The synced data is gone. Set up sync again.');
+    if (!head) throw gone('The synced data is gone. Set up sync again.');
     const tomb = await storage.getTombstones();
     const shared = await storage.getSharedSettings();
     if (head === this.state.head && !this.hasLocalChanges() && !Object.keys(tomb).length && shared.modifiedAt === this.state.shared) {
@@ -902,6 +964,15 @@ class Sync {
     }
 
     const snap = await remote.load();
+    // If another device started sync over with a new passphrase, this one
+    // must not mix in data sealed with the old key.
+    if (snap.metaRef !== this.state.meta) {
+      const meta = JSON.parse(await snap.readMeta());
+      if (await unseal(key, meta.check).catch(() => null) !== CHECK_TEXT) {
+        throw gone('Sync was started over with a new passphrase on another device. Set it up again here with the new passphrase.');
+      }
+      this.state.meta = snap.metaRef;
+    }
     const remoteIdx = remote.usesIndex
       ? (snap.indexText ? await unseal(key, snap.indexText) : { chats: {} })
       : { chats: snap.chats, shared: snap.shared };

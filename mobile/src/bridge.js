@@ -117,14 +117,18 @@ function nativeGoogleAuth() {
     return r.accessToken;
   };
   return {
+    // Always offers the choice of account, so another one can be picked.
+    // The account (Android tells us which) is kept as the sync "secret", so
+    // renewing access stays on it.
     async signIn() {
-      remember(await call('authorize', { interactive: true }));
-      return { account: null, secret: null };
+      const r = await call('authorize', { interactive: true, chooseAccount: true });
+      remember(r);
+      return { account: r.email || null, secret: r.email || null };
     },
-    async accessToken(_secret, { force = false } = {}) {
+    async accessToken(account, { force = false } = {}) {
       if (!force && cached && Date.now() < cached.until) return cached.token;
       if (force && cached) await call('clearToken', { token: cached.token }).catch(() => {});
-      return remember(await call('authorize', { interactive: false }));
+      return remember(await call('authorize', { interactive: false, ...(account ? { account } : {}) }));
     },
     async signOut(_secret, email) {
       cached = null;

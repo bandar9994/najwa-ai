@@ -131,6 +131,8 @@ How it works:
 - If the same chat changed on two devices before they synced, the messages are merged, so nothing is lost. Deleting a chat deletes it everywhere.
 - API keys and model server addresses stay on each device.
 - **Stop syncing** turns sync off on that device and, for Google Drive, removes Najwa AI's access to the Google account.
+- **Another Google account or passphrase:** stop syncing, then set it up again. Signing in always asks which Google account to use.
+- **Forgot the passphrase?** Set up sync with a new one. When Najwa AI says the passphrase is wrong, choose **Start over with this passphrase**: the synced copy is erased and made again from the chats on that device. Your other devices then say sync was started over; tap **Set up again** there with the new passphrase and their chats are added back.
 
 Google sign-in needs a one-time setup of the app in Google Cloud. See [docs/google-drive-setup.md](google-drive-setup.md).
 

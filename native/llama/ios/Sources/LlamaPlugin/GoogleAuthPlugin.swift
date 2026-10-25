@@ -14,10 +14,12 @@ import Security
  *
  * status() resolves with {configured}: whether this build has a client ID
  * (without one, the app doesn't offer Google Drive sync on iPhone).
- * authorize({interactive}) resolves with {accessToken}. With a saved sign-in
- * it renews the token quietly; otherwise, if interactive, it shows Google's
- * sign-in page in Apple's secure sheet (ASWebAuthenticationSession, with
- * PKCE). Without a sign-in and not interactive it rejects with NEEDS_SIGN_IN.
+ * authorize({interactive, chooseAccount}) resolves with {accessToken}. With a
+ * saved sign-in it renews the token quietly; otherwise, if interactive, it
+ * shows Google's sign-in page in Apple's secure sheet
+ * (ASWebAuthenticationSession, with PKCE). Without a sign-in and not
+ * interactive it rejects with NEEDS_SIGN_IN. chooseAccount (setting up sync)
+ * skips the saved sign-in and lets the user pick any Google account.
  * clearToken({token}) forgets nothing that matters (tokens are renewed from
  * the saved sign-in). signOut() revokes the sign-in and forgets it.
  *
@@ -66,7 +68,9 @@ public class GoogleAuthPlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthenticationP
             return
         }
         let interactive = call.getBool("interactive") ?? false
-        if let refresh = Self.loadRefreshToken() {
+        if interactive && (call.getBool("chooseAccount") ?? false) {
+            signIn(clientId: clientId, call: call)
+        } else if let refresh = Self.loadRefreshToken() {
             refreshAccessToken(clientId: clientId, refreshToken: refresh) { result in
                 switch result {
                 case .success(let token):
@@ -118,7 +122,8 @@ public class GoogleAuthPlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthenticationP
             URLQueryItem(name: "code_challenge", value: challenge),
             URLQueryItem(name: "code_challenge_method", value: "S256"),
             URLQueryItem(name: "state", value: state),
-            URLQueryItem(name: "prompt", value: "consent")
+            // Always ask which account, so a different one can be picked.
+            URLQueryItem(name: "prompt", value: "select_account consent")
         ]
         DispatchQueue.main.async {
             let session = ASWebAuthenticationSession(url: url.url!, callbackURLScheme: scheme) { callback, error in

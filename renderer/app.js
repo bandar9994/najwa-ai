@@ -2002,19 +2002,30 @@ function syncView(onCleanup, field) {
       h('p', { class: `status ${label.cls}`, text: label.text }),
       st.error ? h('p', { class: 'help', text: st.error }) : null,
       h('div', { class: 'field-row' },
-        h('button', { class: 'btn primary', text: 'Sync now', disabled: st.running, onclick: () => api.sync.now() }),
+        // The synced copy is gone or was started over: setting up again is the way on.
+        st.needsSetup
+          ? h('button', { class: 'btn primary', text: 'Set up again', onclick: stopSyncing })
+          : h('button', { class: 'btn primary', text: 'Sync now', disabled: st.running, onclick: () => api.sync.now() }),
         h('button', {
           class: 'btn danger',
           text: 'Stop syncing',
           onclick: async () => {
-            if (!(await confirmBox('Stop syncing on this device? Your chats stay here and in the repository.', 'Stop syncing'))) return;
-            S.sync = await api.sync.disconnect();
-            renderSyncBadge();
-            draw();
+            const where = st.provider === 'gdrive' ? 'in your Google Drive' : 'in the repository';
+            if (!(await confirmBox(`Stop syncing on this device? Your chats stay here and ${where}.`, 'Stop syncing'))) return;
+            await stopSyncing();
           }
         })),
-      h('p', { class: 'help', text: 'Chats, assistants and memory sync by themselves: a few seconds after each change, when you open the app and every minute while it is open. API keys and server addresses stay on each device.' })
+      h('p', { class: 'help', text: 'Chats, assistants and memory sync by themselves: a few seconds after each change, when you open the app and every minute while it is open. API keys and server addresses stay on each device.' }),
+      h('p', { class: 'help', text: st.provider === 'gdrive'
+        ? 'To use another Google account or a new passphrase, stop syncing, then set it up again.'
+        : 'To use another repository or a new passphrase, stop syncing, then set it up again.' })
     ];
+  };
+
+  const stopSyncing = async () => {
+    S.sync = await api.sync.disconnect();
+    renderSyncBadge();
+    draw();
   };
 
   // Which destination the setup form shows. Google Drive is the easy one,
@@ -2032,12 +2043,16 @@ function syncView(onCleanup, field) {
   const connectButton = (label, busyText, getOptions) => {
     const msg = h('p', { class: 'status' });
     const btn = h('button', { class: 'btn primary', text: label });
-    btn.addEventListener('click', async () => {
+    // After a wrong passphrase: erase the synced copy and start it again
+    // with the passphrase entered here (for a forgotten one).
+    const startOver = h('div', { hidden: true });
+    const connect = async (extra = {}) => {
       btn.disabled = true;
+      startOver.hidden = true;
       msg.className = 'status';
       msg.textContent = busyText;
       try {
-        S.sync = await api.sync.connect(getOptions());
+        S.sync = await api.sync.connect({ ...getOptions(), ...extra });
         renderSyncBadge();
         shownConfigured = null;
         draw();
@@ -2046,9 +2061,24 @@ function syncView(onCleanup, field) {
         msg.className = 'status bad';
         msg.textContent = errorText(err);
         btn.disabled = false;
+        const st = await api.sync.status().catch(() => null);
+        if (st && st.startOver) {
+          startOver.replaceChildren(
+            h('p', { class: 'help', text: `Forgot the passphrase? You can start over: the synced copy in ${st.startOver} is erased and made again with the passphrase above, from the chats on this device. Your other devices then need the new passphrase; their chats are added back when you set them up with it.` }),
+            h('button', {
+              class: 'btn danger',
+              text: 'Start over with this passphrase',
+              onclick: async () => {
+                if (!(await confirmBox(`Erase the synced copy in ${st.startOver} and start over with the new passphrase? Chats on your devices are not deleted.`, 'Start over'))) return;
+                await connect({ startOver: true });
+              }
+            }));
+          startOver.hidden = false;
+        }
       }
-    });
-    return [h('div', { class: 'field-row' }, btn), msg];
+    };
+    btn.addEventListener('click', () => connect());
+    return [h('div', { class: 'field-row' }, btn), msg, startOver];
   };
 
   const driveForm = () => {

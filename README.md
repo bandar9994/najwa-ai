@@ -285,7 +285,7 @@ Yes. In **Settings → Connectors**, tap **Add GitHub** and paste a fine-grained
 <details>
 <summary><b>What if I forget my sync passphrase?</b></summary>
 
-It can't be recovered, because nobody else ever has it. Your chats are still on your devices: stop syncing, then set up sync again with a new passphrase.
+It can't be recovered, because nobody else ever has it. Your chats are still on your devices: set up sync with a new passphrase and choose **Start over with this passphrase**, then **Set up again** with it on your other devices. Their chats are added back.
 </details>
 
 ## For businesses
