@@ -202,14 +202,14 @@ test('Claude: tool use, with the screenshot in the tool result', async () => {
   }
 });
 
-test('Messages sent while the model works: read after its step, or sent next when too late', async () => {
+test('Messages sent while the model works with tools: read after its step, or sent next when too late', async () => {
   const bodies = [];
   const steering = { send: null };
   const s = await server(async (req, res) => {
     bodies.push(await readBody(req));
     if (bodies.length === 1) {
-      // The user writes while the model is busy.
-      assert.strictEqual(steering.send('look at the pricing too', 's1'), true);
+      // Just answering, no tools yet: refused (the app interrupts instead).
+      assert.strictEqual(steering.send('too early', 's0'), false);
       return claudeSse(res, [start,
         { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: 'tu_1', name: 'screenshot', input: {} } },
         { type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: '{}' } },
@@ -227,8 +227,15 @@ test('Messages sent while the model works: read after its step, or sent next whe
   });
   try {
     const infos = [];
+    // The user writes while the model works with its tools.
+    const tools = fakeTools();
+    const run = tools.run;
+    tools.run = async (...args) => {
+      assert.strictEqual(steering.send('look at the pricing too', 's1'), true);
+      return run(...args);
+    };
     const r = await chatWithTools({
-      kind: 'anthropic', cfg: { apiKey: 'k', baseUrl: s.url }, tools: fakeTools(),
+      kind: 'anthropic', cfg: { apiKey: 'k', baseUrl: s.url }, tools,
       req: { model: 'claude-haiku-4-5', messages: [{ role: 'user', content: 'How does it look?' }], steering },
       onDelta: () => {}, onInfo: (i) => infos.push(i)
     });

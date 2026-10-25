@@ -194,7 +194,8 @@ In **Settings → General → How replies appear**: **A sentence at a time** (th
 
 You can keep writing while a reply is written:
 - **Hermes Agent, and models using the browser or connectors**, work in steps, and read your message after the current one, like Claude does. It shows among the reply's steps (💬 You: …, then **read ✓**), and the reply takes it into account. If the agent finishes before reading it, it goes as your next message.
-- **Other replies** can't take anything mid-way: your message waits above the message box and goes as soon as the reply is done (several go together as one). ✎ takes one back to edit.
+- **Any other reply** (a model just answering) stops where it is, marked "Stopped here to answer your next message", and the model answers your new message right away, with what it wrote so far in mind.
+- If an agent can't take a message mid-way (an older Hermes), it isn't cut off: your message waits above the message box and goes when it's done. ✎ takes it back to edit.
 - The red ■ stops the reply; anything waiting then goes back into the box instead of being sent.
 
 ### Using it away from home

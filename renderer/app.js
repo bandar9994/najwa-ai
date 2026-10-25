@@ -1011,7 +1011,7 @@ function updateSendButton() {
   const streaming = isStreaming(S.current);
   el.stopBtn.hidden = !streaming;
   el.sendBtn.hidden = streaming && !el.input.value.trim() && !pictures.length;
-  el.sendBtn.title = streaming ? 'Send when this reply is done' : 'Send';
+  el.sendBtn.title = 'Send';
   drawQueued();
 }
 
@@ -1057,9 +1057,11 @@ function putBack(chat, list) {
   updateSendButton();
 }
 
-// A message sent while a reply is written. Hermes, and replies that use
+// A message sent while a reply is written. Hermes, and replies working with
 // tools, read it after their current step, so it shows among the reply's
-// steps; anything else waits for the reply to finish (see queued).
+// steps. Any other reply is interrupted: it stops where it is and the model
+// answers the new message right away. (An agent that can't take it, like an
+// older Hermes, isn't cut off: the message waits for it, see queued.)
 async function sendWhileReplying(chat, text, images) {
   const found = [...S.requests].find(([, r]) => r.chat === chat);
   if (found && text && !images.length && api.ai.steer) {
@@ -1081,6 +1083,12 @@ async function sendWhileReplying(chat, text, images) {
   }
   if (isStreaming(chat)) {
     queued.set(chat, [...(queued.get(chat) || []), { text, images }]);
+    if (found && !isAgent(found[1].msg.model)) {
+      const [requestId, r] = found;
+      r.interrupted = true;
+      r.stopped = true;
+      api.ai.abort(requestId);
+    }
   } else {
     // The reply ended meanwhile: this is simply the next message.
     queued.set(chat, [{ text, images }]);
@@ -1916,6 +1924,12 @@ async function runCompletion(chat) {
   if (!res.ok) msg.error = `Error: ${res.error}`;
   if (res.stats) msg.stats = res.stats;
   if (res.ok && res.stopReason === 'max_tokens') msg.notice = 'The reply was cut off at the length limit. Ask it to continue, or raise "Max tokens" in Settings.';
+  if (request.interrupted) {
+    msg.notice = 'Stopped here to answer your next message.';
+    // Interrupted before it wrote anything: no need to keep an empty reply.
+    const at = chat.messages.indexOf(msg);
+    if (at >= 0 && !msg.content.trim() && !(msg.tools || []).length) chat.messages.splice(at, 1);
+  }
   voiceReplyUpdated(msg);
   chat.updatedAt = Date.now();
   await saveChatNow(chat);
@@ -1936,7 +1950,8 @@ async function runCompletion(chat) {
     if (titler) generateTitle(chat, titler);
   }
 
-  sendQueued(chat, res);
+  // Interrupted for a new message: that goes now, like a finished reply.
+  sendQueued(chat, request.interrupted ? { ok: true } : res);
 }
 
 async function generateTitle(chat, model = chat.model) {

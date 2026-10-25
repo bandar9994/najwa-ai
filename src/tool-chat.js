@@ -266,17 +266,20 @@ async function chatWithTools({ kind, cfg, req, onDelta, signal, onInfo = () => {
   const k = Object.create(KINDS[kind]); // per reply (Ollama remembers whether the model can see)
   const w = replyWriter(onDelta);
   const extra = [];
-  // Messages the user sends meanwhile: read by the model after the current step.
+  // Messages the user sends meanwhile: read by the model after the current
+  // step, once it's working with tools. Before that (just answering), the app
+  // interrupts the reply instead, so it's refused here.
   const inbox = [];
-  if (req.steering) req.steering.send = (text, id) => inbox.push({ text, id }) > 0;
+  const working = { yes: false };
+  if (req.steering) req.steering.send = (text, id) => working.yes && inbox.push({ text, id }) > 0;
   try {
-    return await toolLoop({ k, cfg, req, w, extra, inbox, signal, onInfo, tools });
+    return await toolLoop({ k, cfg, req, w, extra, inbox, working, signal, onInfo, tools });
   } finally {
     if (req.steering) req.steering.send = null;
   }
 }
 
-async function toolLoop({ k, cfg, req, w, extra, inbox, signal, onInfo, tools }) {
+async function toolLoop({ k, cfg, req, w, extra, inbox, working, signal, onInfo, tools }) {
   let turn;
   for (let step = 0; ; step++) {
     try {
@@ -288,6 +291,7 @@ async function toolLoop({ k, cfg, req, w, extra, inbox, signal, onInfo, tools })
       throw err;
     }
     if (!turn.calls.length) break;
+    working.yes = true;
     extra.push(...turn.assistant);
     w.gap();
     const results = [];
