@@ -87,7 +87,7 @@ test('nothing readable crosses the network, and other keys and replays are refus
     const text = await first.text();
     assert.strictEqual(first.status, 200);
     assert.ok(!text.includes('qwen'), 'replies must be encrypted');
-    assert.strictEqual(first.headers.get('access-control-allow-origin'), '*');
+    assert.strictEqual(first.headers.get('access-control-allow-origin'), null, 'no web page involved, so no CORS header');
     // The same request again (a replay) is refused.
     assert.strictEqual((await fetch(url, { method: 'POST', body })).status, 403);
     // So is an old one.
