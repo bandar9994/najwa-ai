@@ -2,7 +2,7 @@
 // Licensed under the Najwa AI License (see LICENSE): non-commercial use only;
 // keep the Najwa AI name and the "Najwa AI by Bandar Altariqi" credit; no rebranding.
 
-// JNI bridge between Najwa AI (com.bandar9994.balimda.LlamaEngine) and the
+// JNI bridge between Najwa AI (com.bandaraltariqi.najwa.LlamaEngine) and the
 // on-device engine shared with the iOS app (native/llama/engine).
 
 #include <jni.h>
@@ -112,7 +112,7 @@ bool on_token(void * user, const char * text) {
 extern "C" {
 
 JNIEXPORT jstring JNICALL
-Java_com_bandar9994_balimda_LlamaEngine_nativeDevices(JNIEnv * env, jclass) {
+Java_com_bandaraltariqi_najwa_LlamaEngine_nativeDevices(JNIEnv * env, jclass) {
     char * devices = be_devices();
     jstring out = to_jstring(env, devices ? devices : "");
     be_string_free(devices);
@@ -120,7 +120,7 @@ Java_com_bandar9994_balimda_LlamaEngine_nativeDevices(JNIEnv * env, jclass) {
 }
 
 JNIEXPORT jlong JNICALL
-Java_com_bandar9994_balimda_LlamaEngine_nativeLoad(JNIEnv * env, jclass, jstring jpath, jint n_ctx,
+Java_com_bandaraltariqi_najwa_LlamaEngine_nativeLoad(JNIEnv * env, jclass, jstring jpath, jint n_ctx,
                                                jint n_gpu_layers, jint n_threads) {
     const std::string path = to_utf8(env, jpath);
     char * error = nullptr;
@@ -134,13 +134,13 @@ Java_com_bandar9994_balimda_LlamaEngine_nativeLoad(JNIEnv * env, jclass, jstring
 
 // Where the loaded model runs, e.g. "offloaded 29/29 layers to GPU" ("" = CPU only).
 JNIEXPORT jstring JNICALL
-Java_com_bandar9994_balimda_LlamaEngine_nativeOffload(JNIEnv * env, jclass, jlong handle) {
+Java_com_bandaraltariqi_najwa_LlamaEngine_nativeOffload(JNIEnv * env, jclass, jlong handle) {
     return to_jstring(env, be_offload(reinterpret_cast<be_engine *>(handle)));
 }
 
 // Loads a vision model's image part (its mmproj file); throws on failure.
 JNIEXPORT void JNICALL
-Java_com_bandar9994_balimda_LlamaEngine_nativeLoadVision(JNIEnv * env, jclass, jlong handle, jstring jpath,
+Java_com_bandaraltariqi_najwa_LlamaEngine_nativeLoadVision(JNIEnv * env, jclass, jlong handle, jstring jpath,
                                                      jboolean use_gpu, jint n_threads) {
     const std::string path = to_utf8(env, jpath);
     char * error = nullptr;
@@ -150,7 +150,7 @@ Java_com_bandar9994_balimda_LlamaEngine_nativeLoadVision(JNIEnv * env, jclass, j
 }
 
 JNIEXPORT void JNICALL
-Java_com_bandar9994_balimda_LlamaEngine_nativeFree(JNIEnv *, jclass, jlong handle) {
+Java_com_bandaraltariqi_najwa_LlamaEngine_nativeFree(JNIEnv *, jclass, jlong handle) {
     be_free(reinterpret_cast<be_engine *>(handle));
 }
 
@@ -158,7 +158,7 @@ Java_com_bandar9994_balimda_LlamaEngine_nativeFree(JNIEnv *, jclass, jlong handl
 // (image files, in order). `callback.onToken(String)` receives text pieces
 // and returns false to stop. Returns the engine's result line (see balimda_engine.h).
 JNIEXPORT jstring JNICALL
-Java_com_bandar9994_balimda_LlamaEngine_nativeComplete(JNIEnv * env, jclass, jlong handle, jobjectArray jroles,
+Java_com_bandaraltariqi_najwa_LlamaEngine_nativeComplete(JNIEnv * env, jclass, jlong handle, jobjectArray jroles,
                                                    jobjectArray jcontents, jintArray jimage_counts, jobjectArray jimages,
                                                    jint max_tokens, jfloat temperature, jboolean background,
                                                    jobject callback) {

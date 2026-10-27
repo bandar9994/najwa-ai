@@ -1,14 +1,28 @@
 apply plugin: 'com.android.application'
 
+// Release signing inputs. Names are kept from the earlier setup so existing CI
+// secrets keep working: BALIMDA_KEYSTORE_FILE, BALIMDA_KEYSTORE_PASSWORD,
+// BALIMDA_KEY_ALIAS, BALIMDA_KEY_PASSWORD.
+def releaseSigningEnv = [
+    file         : System.getenv("BALIMDA_KEYSTORE_FILE"),
+    storePassword: System.getenv("BALIMDA_KEYSTORE_PASSWORD"),
+    keyAlias     : System.getenv("BALIMDA_KEY_ALIAS"),
+    keyPassword  : System.getenv("BALIMDA_KEY_PASSWORD"),
+]
+releaseSigningEnv.complete = releaseSigningEnv.file && releaseSigningEnv.storePassword &&
+        releaseSigningEnv.keyAlias && releaseSigningEnv.keyPassword
+
 android {
-    namespace = "com.bandar9994.balimda"
+    namespace = "com.bandaraltariqi.najwa"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.bandar9994.balimda"
+        applicationId "com.bandaraltariqi.najwa"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         // CI sets the build number so each new APK installs as an update.
-        versionCode Integer.parseInt(System.getenv("GITHUB_RUN_NUMBER") ?: "1")
+        // VERSION_CODE_OFFSET (default 0) is added on top, e.g. to jump above the
+        // versionCode of a build that is already uploaded to Google Play.
+        versionCode Integer.parseInt(System.getenv("GITHUB_RUN_NUMBER") ?: "1") + Integer.parseInt(System.getenv("VERSION_CODE_OFFSET") ?: "0")
         versionName "1.0.${System.getenv("GITHUB_RUN_NUMBER") ?: "0"}"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         // The native llama.cpp engine is built for 64-bit ARM phones.
@@ -27,32 +41,36 @@ android {
         }
     }
     signingConfigs {
-        // Every build must be signed with the same key, or Android refuses to
-        // update the app (and you'd have to uninstall it, losing your chats).
-        // Set BALIMDA_KEYSTORE_* (e.g. from GitHub secrets) to sign with your
-        // own private key -- required before publishing. Otherwise the test key
-        // in this folder is used, which is only meant for your own devices.
-        balimda {
-            def ks = System.getenv("BALIMDA_KEYSTORE_FILE")
-            if (ks) {
-                storeFile file(ks)
-                storePassword System.getenv("BALIMDA_KEYSTORE_PASSWORD")
-                keyAlias System.getenv("BALIMDA_KEY_ALIAS")
-                keyPassword System.getenv("BALIMDA_KEY_PASSWORD")
-            } else {
-                storeFile file("balimda-test.keystore")
-                storePassword "android"
-                keyAlias "balimda"
-                keyPassword "android"
+        // Debug builds (your own phone, CI test runs) use the public test key
+        // committed in this folder. Anyone with this repository has it, so it
+        // must never sign anything you publish.
+        testKey {
+            storeFile file("balimda-test.keystore")
+            storePassword "android"
+            keyAlias "balimda"
+            keyPassword "android"
+        }
+        // Release builds are signed ONLY with your private key, given through
+        // these environment variables (in CI they come from GitHub secrets).
+        // There is no fallback to the test key: if any is missing, the release
+        // build fails (see the check below).
+        if (releaseSigningEnv.complete) {
+            release {
+                storeFile file(releaseSigningEnv.file)
+                storePassword releaseSigningEnv.storePassword
+                keyAlias releaseSigningEnv.keyAlias
+                keyPassword releaseSigningEnv.keyPassword
             }
         }
     }
     buildTypes {
         debug {
-            signingConfig signingConfigs.balimda
+            signingConfig signingConfigs.testKey
         }
         release {
-            signingConfig signingConfigs.balimda
+            if (releaseSigningEnv.complete) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
@@ -102,4 +120,30 @@ try {
     }
 } catch(Exception e) {
     logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+}
+
+// Fail early, with a clear message, when a release APK/AAB is requested without
+// the private signing key. Debug builds and other tasks (help, tasks, lint of
+// debug, ...) are not affected.
+gradle.taskGraph.whenReady { graph ->
+    def wantsSignedRelease = graph.allTasks.any {
+        it.project == project && it.name ==~ /^(assemble|bundle|package|sign|install)Release.*/
+    }
+    if (wantsSignedRelease) {
+        def missing = []
+        if (!releaseSigningEnv.file) missing << "BALIMDA_KEYSTORE_FILE"
+        if (!releaseSigningEnv.storePassword) missing << "BALIMDA_KEYSTORE_PASSWORD"
+        if (!releaseSigningEnv.keyAlias) missing << "BALIMDA_KEY_ALIAS"
+        if (!releaseSigningEnv.keyPassword) missing << "BALIMDA_KEY_PASSWORD"
+        if (missing) {
+            throw new GradleException("Release build needs your private signing key, but these environment variables are not set: " +
+                    missing.join(", ") + ". Release builds never use the public test key. " +
+                    "Create an upload keystore and set BALIMDA_KEYSTORE_FILE (path), BALIMDA_KEYSTORE_PASSWORD, " +
+                    "BALIMDA_KEY_ALIAS and BALIMDA_KEY_PASSWORD (in CI: the BALIMDA_KEYSTORE_BASE64 / _PASSWORD / " +
+                    "BALIMDA_KEY_ALIAS / BALIMDA_KEY_PASSWORD secrets). For a test build run assembleDebug instead.")
+        }
+        if (!file(releaseSigningEnv.file).isFile()) {
+            throw new GradleException("BALIMDA_KEYSTORE_FILE points to a file that does not exist: " + releaseSigningEnv.file)
+        }
+    }
 }
