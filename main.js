@@ -125,6 +125,18 @@ function boundsAreVisible(bounds) {
     bounds.y < a.y + a.height && bounds.y + bounds.height > a.y);
 }
 
+let quitPrepared = false;  // before-quit has saved and synced; quitting goes ahead
+
+// Asks the window to write the chats it is waiting to save (see
+// renderer/save-queue.js), and waits for it, but not for long.
+function flushWindowSaves(timeoutMs = 3000) {
+  const win = mainWindow;
+  if (!win || win.isDestroyed() || win.webContents.isDestroyed()) return Promise.resolve();
+  const timeout = new Promise((r) => setTimeout(r, timeoutMs));
+  const flush = win.webContents.executeJavaScript('window.najwaFlushSaves ? window.najwaFlushSaves() : 0', true);
+  return Promise.race([flush, timeout]).catch(() => {});
+}
+
 async function createWindow() {
   const state = await storage.getState();
   const saved = state.windowBounds;
@@ -165,6 +177,19 @@ async function createWindow() {
   mainWindow.on('resize', scheduleSave);
   mainWindow.on('move', scheduleSave);
   mainWindow.on('close', saveBounds);
+  // Closing the window: first let it write the chats it is still waiting to
+  // save (a streaming reply is saved on a timer), then close. When the app is
+  // quitting, before-quit has done this already.
+  let closeFlushed = false;
+  mainWindow.on('close', (e) => {
+    if (closeFlushed || quitPrepared) return;
+    e.preventDefault();
+    closeFlushed = true;
+    const win = mainWindow;
+    flushWindowSaves().finally(() => {
+      if (!win.isDestroyed()) win.close();
+    });
+  });
   // Pick up what you did on your phone as soon as you come back to the PC.
   mainWindow.on('focus', () => sync.run());
 
@@ -666,14 +691,16 @@ app.whenReady().then(async () => {
   }, 60 * 1000);
 });
 
-// Push the last changes before quitting, so they're on the phone right away.
-let syncedBeforeQuit = false;
+// Write the chats the window is still waiting to save, then push the last
+// changes before quitting, so they're on the phone right away.
 app.on('before-quit', (e) => {
-  if (syncedBeforeQuit || !sync || !sync.pending()) return;
+  if (quitPrepared) return;
   e.preventDefault();
-  syncedBeforeQuit = true;
-  const timeout = new Promise((r) => setTimeout(r, 8000));
-  Promise.race([sync.run(), timeout]).finally(() => app.quit());
+  quitPrepared = true;
+  (async () => {
+    await flushWindowSaves();
+    if (sync && sync.pending()) await Promise.race([sync.run(), new Promise((r) => setTimeout(r, 8000))]);
+  })().catch(() => {}).finally(() => app.quit());
 });
 
 app.on('will-quit', () => {

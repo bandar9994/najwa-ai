@@ -567,16 +567,25 @@ if (isNative) {
 }
 
 // Sync when the app opens, when you come back to it, every minute while it's
-// on screen, and when you leave it (so the PC gets your last messages).
+// on screen, and when you leave it (so the PC gets your last messages). On
+// leaving, the app first saves the chat it is still writing (renderer/app.js,
+// saveAndSyncNow) and then syncs, so the last words reach the PC even when
+// the reply was still streaming; the sync here only covers what was already
+// saved.
 syncReady.then((sync) => {
   sync.run();
   setInterval(() => {
     if (document.visibilityState === 'visible') sync.run();
   }, 60 * 1000);
-  document.addEventListener('visibilitychange', () => sync.run());
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') sync.run();
+  });
   if (isNative) {
     App.addListener('resume', () => sync.run());
     App.addListener('pause', () => {
+      // The web view's own "hidden" event may not come before the app is
+      // frozen, so ask the app to save and sync from here too.
+      window.dispatchEvent(new Event('najwa:background'));
       if (sync.pending()) sync.run();
     });
   }

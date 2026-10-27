@@ -282,21 +282,35 @@ function confirmBox(message, okLabel = 'Delete') {
 // ---------------------------------------------------------------------------
 // persistence
 
-const saveTimers = new Map();
+const saveQueue = SaveQueue.createSaveQueue({ save: (chat) => api.chats.save(chat) });
 
 async function saveChatNow(chat) {
-  clearTimeout(saveTimers.get(chat.id));
-  saveTimers.delete(chat.id);
-  await api.chats.save(chat);
+  await saveQueue.now(chat);
   await refreshList();
 }
 
 function saveChatSoon(chat, ms = 1200) {
-  if (saveTimers.has(chat.id)) return;
-  saveTimers.set(chat.id, setTimeout(() => {
-    saveTimers.delete(chat.id);
-    saveChatNow(chat);
-  }, ms));
+  saveQueue.soon(chat, ms, refreshList);
+}
+
+// The app is going to the background (or closing): write what is waiting to be
+// saved now, instead of at the next timer, which may never run. On the phone,
+// sync then sends it, so the other devices get the latest messages.
+let leaving = null;
+function saveAndSyncNow() {
+  if (!leaving) {
+    leaving = (async () => {
+      try {
+        await saveQueue.flush();
+        if (S.info && S.info.mobile && api.sync && S.sync && S.sync.configured) await api.sync.now();
+      } catch {
+        // nothing more can be done while leaving
+      } finally {
+        leaving = null;
+      }
+    })();
+  }
+  return leaving;
 }
 
 const persistDrafts = debounce(() => api.state.save({ drafts: S.state.drafts }), 400);
@@ -1478,8 +1492,7 @@ async function deleteChat(id) {
   if (!(await confirmBox(`Delete "${meta ? meta.title : 'this chat'}"? This cannot be undone.`))) return;
   const cached = S.cache.get(id);
   for (const [rid, r] of S.requests) if (r.chat === cached) api.ai.abort(rid);
-  clearTimeout(saveTimers.get(id));
-  saveTimers.delete(id);
+  saveQueue.drop(id);
   await api.chats.remove(id);
   S.cache.delete(id);
   if (S.current && S.current.id === id) newChat();
@@ -3236,6 +3249,15 @@ function bindEvents() {
   $('#drawerBackdrop').addEventListener('click', closeDrawer);
 
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
+
+  // Leaving the app: save the chats waiting for their timer, and sync (phone).
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') saveAndSyncNow();
+  });
+  window.addEventListener('pagehide', saveAndSyncNow);
+  window.addEventListener('najwa:background', saveAndSyncNow);
+  // The desktop app's main process calls this before closing or quitting.
+  window.najwaFlushSaves = () => saveQueue.flush();
 
   if (api.sync) {
     api.sync.onEvent(onSyncEvent);
