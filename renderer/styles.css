@@ -2,6 +2,26 @@
    Licensed under the Najwa AI License (see LICENSE): non-commercial use only;
    keep the Najwa AI name and the "Najwa AI by Bandar Altariqi" credit; no rebranding. */
 
+/* Almarai (SIL Open Font License 1.1, see fonts/OFL.txt): the same Arabic on
+   every device. Only used for Arabic text; Latin keeps the system font. The
+   files ship inside the app, so there is no network request. */
+@font-face {
+  font-family: "Almarai";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("fonts/Almarai-Regular.woff2") format("woff2");
+  unicode-range: U+0600-06FF, U+0750-077F, U+08A0-08FF, U+FB50-FDFF, U+FE70-FEFF, U+200C-200F, U+25CC;
+}
+@font-face {
+  font-family: "Almarai";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("fonts/Almarai-Bold.woff2") format("woff2");
+  unicode-range: U+0600-06FF, U+0750-077F, U+08A0-08FF, U+FB50-FDFF, U+FE70-FEFF, U+200C-200F, U+25CC;
+}
+
 :root {
   --bg: #ffffff;
   --bg-side: #f5f5f7;
@@ -70,7 +90,7 @@ html, body {
   text-size-adjust: 100%;
   background: var(--bg);
   color: var(--text);
-  font: 14px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
+  font: 14px/1.55 "Almarai", system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
 }
 
 button { font: inherit; color: inherit; }

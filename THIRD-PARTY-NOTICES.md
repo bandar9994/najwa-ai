@@ -15,10 +15,16 @@ its own license, and the Najwa AI License does not change or limit it.
 | [Anthropic TypeScript SDK](https://github.com/anthropics/anthropic-sdk-typescript) | Connecting to Claude | MIT | © 2023 Anthropic, PBC |
 | [OpenCL Headers](https://github.com/KhronosGroup/OpenCL-Headers) | Building GPU support (Android) | Apache-2.0 | © 2008-2020 The Khronos Group Inc. |
 | [Google Play services Auth](https://developers.google.com/android/guides/overview) (`play-services-auth`) | Google sign-in for Drive sync (Android) | [Android Software Development Kit License](https://developer.android.com/studio/terms) | © Google LLC |
+| [Almarai](https://github.com/google/fonts/tree/main/ofl/almarai) (font, Regular and Bold) | Arabic text | SIL Open Font License 1.1 | © 2019 The Almarai Project Authors (https://github.com/JuergenWillrodt/Almarai) |
 
 The full license texts come with each component. In the source tree they are in
 `node_modules/<package>/LICENSE`. The Android build downloads llama.cpp and the
 OpenCL headers together with their `LICENSE` files.
+
+The Almarai font is bundled unmodified, only converted from TTF to WOFF2. It is
+licensed under the SIL Open Font License, Version 1.1, which is included in full
+in the app as `fonts/OFL.txt` (and in the source tree as `renderer/fonts/OFL.txt`).
+The font is not sold on its own, and its name is unchanged.
 
 ## MIT License (text)
 
