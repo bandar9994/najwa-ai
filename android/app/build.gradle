@@ -12,9 +12,19 @@ def releaseSigningEnv = [
 releaseSigningEnv.complete = releaseSigningEnv.file && releaseSigningEnv.storePassword &&
         releaseSigningEnv.keyAlias && releaseSigningEnv.keyPassword
 
+// Which store the build is for. Set NAJWA_STORE=play (or -PnajwaStore=play) for
+// the Google Play build, which has no donation link. Left empty, nothing
+// changes: GitHub and sideloaded builds are the default. Read by the web layer
+// through StorePlugin (BuildConfig.NAJWA_STORE).
+def najwaStore = (System.getenv("NAJWA_STORE") ?: project.findProperty("najwaStore") ?: "")
+        .toString().trim().toLowerCase().replaceAll("[^a-z0-9_-]", "")
+
 android {
     namespace = "com.bandaraltariqi.najwa"
     compileSdk = rootProject.ext.compileSdkVersion
+    buildFeatures {
+        buildConfig true
+    }
     defaultConfig {
         applicationId "com.bandaraltariqi.najwa"
         minSdkVersion rootProject.ext.minSdkVersion
@@ -25,6 +35,7 @@ android {
         versionCode Integer.parseInt(System.getenv("GITHUB_RUN_NUMBER") ?: "1") + Integer.parseInt(System.getenv("VERSION_CODE_OFFSET") ?: "0")
         versionName "1.0.${System.getenv("GITHUB_RUN_NUMBER") ?: "0"}"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField "String", "NAJWA_STORE", "\"${najwaStore}\""
         // The native llama.cpp engine is built for 64-bit ARM phones.
         ndk {
             abiFilters 'arm64-v8a'

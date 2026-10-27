@@ -175,6 +175,13 @@ const hermes = nativeFetch ? { ...PROVIDERS.hermes, impl: hermesProvider(nativeF
 
 // The browser for models: a hidden web view of the app's own (search, open,
 // click, type, screenshots), or pages as text where the app doesn't have one.
+// Which store this Android build was made for (see android/app/build.gradle,
+// NAJWA_STORE): "play" for the Google Play build, "" otherwise. If the app
+// can't say, it reports "unknown", which hides what Play doesn't allow.
+const buildStore = Capacitor.getPlatform() === 'android'
+  ? registerPlugin('Store').info().then((r) => String((r && r.store) || ''), () => 'unknown')
+  : Promise.resolve('');
+
 const Browse = isNative && Capacitor.isPluginAvailable('Browse') ? registerPlugin('Browse') : null;
 const webFetch = nativeFetch || ((...args) => fetch(...args));
 const modelBrowser = () => (Browse ? nativeBrowser(Browse, { doFetch: webFetch }) : textBrowser(webFetch));
@@ -329,6 +336,7 @@ window.balimda = {
         dataDir: 'Private app storage on this phone',
         platform: Capacitor.getPlatform(),
         appName: 'Najwa AI',
+        store: await buildStore,
         icon: 'icon.png',
         mobile: true,
         onDevice: true,

@@ -25,6 +25,7 @@ jobs:
       BALIMDA_KEY_ALIAS: ${{ secrets.BALIMDA_KEY_ALIAS }}
       BALIMDA_KEY_PASSWORD: ${{ secrets.BALIMDA_KEY_PASSWORD }}
       VERSION_CODE_OFFSET: ${{ inputs.version_code_offset || '0' }}
+      NAJWA_STORE: play
     steps:
       - name: Check the signing secrets are set
         run: |
