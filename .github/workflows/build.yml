@@ -61,7 +61,7 @@ jobs:
             Windows) ls -la dist/win-unpacked/resources/whisper/whisper-server.exe ;;
             macOS) ls -la dist/mac-arm64/*.app/Contents/Resources/whisper/whisper-server dist/mac/*.app/Contents/Resources/whisper/whisper-server ;;
           esac
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: balimda-desktop-${{ matrix.os }}
           path: |

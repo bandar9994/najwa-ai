@@ -79,7 +79,7 @@ jobs:
         run: |
           unzip -l Najwa-AI-android.aab | grep -E 'lib/.*\.so$' | tee native-libs.txt
           grep -q 'libbalimda_llama.so' native-libs.txt || { echo "::error::libbalimda_llama.so is missing from the bundle"; exit 1; }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: Najwa-AI-android-aab
           path: Najwa-AI-android.aab
