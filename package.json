@@ -44,7 +44,7 @@
     "esbuild": "^0.28.2"
   },
   "build": {
-    "appId": "com.bandar9994.balimda",
+    "appId": "com.bandaraltariqi.najwa",
     "productName": "Najwa AI",
     "files": [
       "main.js",
@@ -75,7 +75,8 @@
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "guid": "2cbbff7f-0a7d-5cf3-a833-f00e752fcab7"
     },
     "mac": {
       "target": [

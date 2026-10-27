@@ -22,6 +22,11 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<!-- Export compliance: the app only uses encryption built into iOS (HTTPS,
+	     WebKit's WebCrypto and CryptoKit for sync and Google sign-in), so it
+	     is exempt and Apple doesn't ask about it on every upload. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>
