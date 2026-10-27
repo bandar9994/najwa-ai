@@ -70,7 +70,7 @@ jobs:
           KEY=$([ -n "$BALIMDA_KEYSTORE_BASE64" ] && echo "your private key" || echo "the test key")
           echo "::notice title=SHA-1 fingerprint ($KEY)::$SHA1"
           echo "**SHA-1 certificate fingerprint** ($KEY), for the Android OAuth client in Google Cloud: \`$SHA1\`" >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: Najwa-AI-android-apk
           path: Najwa-AI-android.apk
