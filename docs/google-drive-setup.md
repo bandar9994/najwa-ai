@@ -44,9 +44,11 @@ The **Build installers** workflow puts them into the desktop app. Google treats 
 
 1. Open the latest **Android app** run in the repository's **Actions** tab. Its summary shows **SHA-1 certificate fingerprint (your private key)**. Copy it.
 2. **Clients → Create client**. Application type **Android**, name **Najwa AI Android**:
-   - Package name: `com.bandar9994.balimda`
+   - Package name: `com.bandaraltariqi.najwa`
    - SHA-1 certificate fingerprint: the value from step 1
 3. Click **Create**. There's nothing to copy, because Android recognises the app by its package name and signature.
+
+Create one Android client per signing key: one for your upload key (builds from GitHub, and the **Android app bundle** workflow shows the same SHA-1), and one for the **App signing key certificate** SHA-1 that Google Play shows under **Test and release → App integrity → App signing** once the app is on Play. Apps installed from Play are re-signed by Google, so they need the Play SHA-1.
 
 If the fingerprint is missing or wrong, the phone shows *"Google sign-in is not set up for this copy of the app yet"*.
 

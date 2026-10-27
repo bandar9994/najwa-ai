@@ -14,7 +14,8 @@ jobs:
       contents: write  # to publish the APK to the "android-latest" release
     env:
       # Your own signing key (see README) -- needed before publishing. Without it
-      # the test key in android/app is used (fine for your own phone).
+      # a debug APK signed with the test key in android/app is built instead
+      # (fine for your own phone).
       BALIMDA_KEYSTORE_BASE64: ${{ secrets.BALIMDA_KEYSTORE_BASE64 }}
     steps:
       - uses: actions/checkout@v4
@@ -35,14 +36,24 @@ jobs:
         run: |
           echo "$BALIMDA_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/balimda.keystore"
           echo "BALIMDA_KEYSTORE_FILE=$RUNNER_TEMP/balimda.keystore" >> "$GITHUB_ENV"
+      # Release builds are signed only with your private key and fail without it.
+      # When the signing secrets aren't set (forks, pull requests, a fresh repo)
+      # this builds the debug APK instead, signed with the test key in
+      # android/app: fine for your own phone, never published.
       - name: Build APK
         working-directory: android
         env:
           BALIMDA_KEYSTORE_PASSWORD: ${{ secrets.BALIMDA_KEYSTORE_PASSWORD }}
           BALIMDA_KEY_ALIAS: ${{ secrets.BALIMDA_KEY_ALIAS }}
           BALIMDA_KEY_PASSWORD: ${{ secrets.BALIMDA_KEY_PASSWORD }}
-        run: ./gradlew assembleRelease --no-daemon
-      - run: cp android/app/build/outputs/apk/release/app-release.apk Najwa-AI-android.apk
+        run: |
+          if [ -n "$BALIMDA_KEYSTORE_BASE64" ]; then
+            ./gradlew assembleRelease --no-daemon
+            cp app/build/outputs/apk/release/app-release.apk ../Najwa-AI-android.apk
+          else
+            ./gradlew assembleDebug --no-daemon
+            cp app/build/outputs/apk/debug/app-debug.apk ../Najwa-AI-android.apk
+          fi
       # The native AI engine must be inside the APK, or the app falls back to
       # the much slower WebAssembly engine.
       - name: Check the native engine is in the APK

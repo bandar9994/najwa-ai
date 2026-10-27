@@ -2,7 +2,7 @@
 // Licensed under the Najwa AI License (see LICENSE): non-commercial use only;
 // keep the Najwa AI name and the "Najwa AI by Bandar Altariqi" credit; no rebranding.
 
-package com.bandar9994.balimda;
+package com.bandaraltariqi.najwa;
 
 import android.accounts.Account;
 import android.accounts.AccountManager;
