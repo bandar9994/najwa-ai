@@ -20,6 +20,7 @@ const r = (...p) => path.join(root, ...p);
 await fs.rm(out, { recursive: true, force: true });
 await fs.mkdir(path.join(out, 'vendor'), { recursive: true });
 await fs.mkdir(path.join(out, 'wllama'), { recursive: true });
+await fs.mkdir(path.join(out, 'fonts'), { recursive: true });
 
 await Promise.all([
   fs.copyFile(r('renderer/app.js'), path.join(out, 'app.js')),
@@ -27,6 +28,9 @@ await Promise.all([
   fs.copyFile(r('renderer/speech-text.js'), path.join(out, 'speech-text.js')),
   fs.copyFile(r('renderer/save-queue.js'), path.join(out, 'save-queue.js')),
   fs.copyFile(r('renderer/styles.css'), path.join(out, 'styles.css')),
+  fs.copyFile(r('renderer/fonts/Almarai-Regular.woff2'), path.join(out, 'fonts/Almarai-Regular.woff2')),
+  fs.copyFile(r('renderer/fonts/Almarai-Bold.woff2'), path.join(out, 'fonts/Almarai-Bold.woff2')),
+  fs.copyFile(r('renderer/fonts/OFL.txt'), path.join(out, 'fonts/OFL.txt')),
   fs.copyFile(r('build/icon.png'), path.join(out, 'icon.png')),
   fs.copyFile(r('LICENSE'), path.join(out, 'LICENSE.txt')),
   fs.copyFile(r('THIRD-PARTY-NOTICES.md'), path.join(out, 'THIRD-PARTY-NOTICES.md')),
