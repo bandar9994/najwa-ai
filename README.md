@@ -211,7 +211,7 @@ The same chat continues on your phone and your computer, even with a different m
 
 | Platform | Download | Notes |
 |---|---|---|
-| **Android** | [Najwa-AI-android.apk](https://github.com/bandar9994/najwa-ai/releases/download/android-latest/Najwa-AI-android.apk) | Open it on your phone and allow installing from your browser. Updates install over the old version and keep your chats. |
+| **Android** | [Najwa-AI-android.apk](https://github.com/bandar9994/najwa-ai/releases/download/android-latest/Najwa-AI-android.apk) | Open it on your phone and allow installing from your browser. Later updates install over this one and keep your chats. Moving from an earlier build to the new app ID (`com.bandaraltariqi.najwa`) is a one-time reinstall: install this version, sign in to sync and enter your passphrase, and your chats come back through sync. If you don't use sync, export your chats to Markdown before you uninstall the old app. |
 | **Windows** 10/11 | [Najwa-AI-Windows-Setup.exe](https://github.com/bandar9994/najwa-ai/releases/download/desktop-latest/Najwa-AI-Windows-Setup.exe) | If SmartScreen appears, choose **More info → Run anyway**. |
 | **Mac** (M1 and newer) | [Najwa-AI-macOS-AppleSilicon.dmg](https://github.com/bandar9994/najwa-ai/releases/download/desktop-latest/Najwa-AI-macOS-AppleSilicon.dmg) | Drag Najwa AI to Applications. The first time, right-click it and choose **Open**. |
 | **Mac** (Intel) | [Najwa-AI-macOS-Intel.dmg](https://github.com/bandar9994/najwa-ai/releases/download/desktop-latest/Najwa-AI-macOS-Intel.dmg) | Same as above. |
