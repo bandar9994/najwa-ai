@@ -40,7 +40,7 @@ jobs:
           case "$VERSION_CODE_OFFSET" in
             ''|*[!0-9]*) echo "::error::version_code_offset must be a whole number"; exit 1;;
           esac
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: 22
