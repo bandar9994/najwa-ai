@@ -55,7 +55,9 @@ If the fingerprint is missing or wrong, the phone shows *"Google sign-in is not 
 ## 5. iPhone client
 
 1. **Clients → Create client**. Application type **iOS**, name **Najwa AI iPhone**:
-   - Bundle ID: `com.bandar9994.balimda`
+   - Bundle ID: `com.bandaraltariqi.najwa`
+
+   If you already created this client with the old Bundle ID (`com.bandar9994.balimda`), open it and change the Bundle ID to `com.bandaraltariqi.najwa` (or create a new client and use its Client ID). The iPhone app's Bundle ID has to match the client exactly, or Google sign-in is refused.
 2. Click **Create** and copy the **Client ID** (it ends in `.apps.googleusercontent.com`). It isn't a secret: iPhone apps can't keep secrets, so Google's iOS clients don't have one.
 3. Put it in `ios/App/App/Info.plist`, as the value of `GoogleIOSClientID`.
 
