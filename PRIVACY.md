@@ -1,8 +1,10 @@
 # Najwa AI privacy policy
 
-*Last updated: 24 October 2026*
+*Last updated: 28 October 2026*
 
 Najwa AI, by Bandar Altariqi, is a chat app that keeps your data on your own devices. Najwa AI has no servers and does not collect, sell or share any personal data.
+
+**Who it is for:** Najwa AI is intended for people aged 18 and over. It is not directed at children, and it should not be used by anyone under 18.
 
 ## What stays on your device
 
@@ -17,6 +19,25 @@ When you send a message, it goes only to the model you picked:
 - **Cloud models** (Anthropic, OpenAI) receive your messages directly from the app, using your own API key. Their privacy policies apply.
 - **Your Hermes Agent** receives your messages directly from the app, on the server where you run it.
 - **Your computer's models, from your phone** ("On your computer"): your messages go from your phone to your own computer over an encrypted connection that only your devices can use, and from there to the model you picked.
+
+## Voice (optional)
+
+Voice is off until you tap the microphone in the message box, or turn on **Read replies aloud** in **Settings → Voice**. The microphone is used only while you are talking to Najwa AI, and what you say is written into the message box so you can check it before sending. Najwa AI does not save audio recordings on your device, and it has no servers to send them to.
+
+- **Android:** speech is turned into text by the speech recognition service built into your phone (normally Google's "Speech Services"), not by code inside Najwa AI. Without **Private voice**, that service may send what you say to its provider's servers (usually Google) to be turned into text, and the provider's privacy policy applies. With **Settings → Voice → Private voice** on, Najwa AI asks the phone to recognise speech on the phone only; this needs Android 12 or newer with offline speech recognition available, and if the phone can't do it, Najwa AI says so instead of falling back. Private voice is off by default. The Android microphone permission is asked for the first time you use it.
+- **iPhone:** speech is turned into text by Apple's speech recognition. Without **Private voice**, what you say is sent to Apple to be turned into text, and Apple's privacy policy applies. With **Private voice** on, recognition happens only on your iPhone, if your iPhone supports it for the language you picked; if not, Najwa AI says so instead of sending audio to Apple. Private voice is off by default.
+- **Desktop (Windows, macOS, Linux):** speech is turned into text on your computer with Whisper (whisper.cpp), a speech recognition program that comes with the desktop app. What you say is recorded in memory, sent to Whisper on your own computer (a local connection, `127.0.0.1`, that never leaves the computer), and then discarded. Nothing is sent to anyone. Whisper needs a model file, which is downloaded once (see "Model downloads" below).
+- **Reading replies aloud:** replies are read with the voices of your phone or computer (Android's text-to-speech engine, Apple's speech synthesiser on iPhone, or the voices installed in your computer's system on desktop). Najwa AI itself sends the text only to that system service. Some phone speech engines can use online voices; if yours does, its provider's policy applies.
+
+## Model downloads
+
+Some features need a model file that is downloaded once and then used on your device. Najwa AI downloads a model only when you choose to, from **Settings → Models** (phone) or **Settings → Voice** (desktop).
+
+- **From where:** from Hugging Face (`huggingface.co`). On phones, the built-in list of on-device chat models comes from there, and you can also paste a link to any other `.gguf` file (or a vision file for a model), which is then downloaded from whatever address you gave. On desktop, the two Whisper speech models (`ggerganov/whisper.cpp`) come from Hugging Face. Hugging Face may send the download on to its own content-delivery hosts, which also receive the request.
+- **What is sent:** an ordinary download request for that file. Like any download, the server can see your device's IP address and the file you ask for. Najwa AI adds no account, API key, chat or other personal data to it, and does not use a Hugging Face account. The request also carries the ordinary technical details your phone or computer's network software adds to any web request (for example the type of device and system version). Hugging Face's privacy policy applies to its side.
+- **What is stored on your device:** the model file, in the app's own private storage (on Android: the app's `models` folder; on iPhone: the app's Application Support `models` folder, which is left out of iCloud backups; on desktop: a `whisper` folder in the app's data folder), plus, on Android, a small list of what was downloaded so Najwa AI can tell you if the phone removed a model. Unfinished downloads are kept as `.part` files so they can resume, and are removed if the download is cancelled or fails. You can delete any downloaded model in the same settings screen.
+- **After the download:** the model runs on your device. Chatting with an on-device model, or speaking to the desktop app, does not contact Hugging Face again.
+- **Notifications:** on Android, a download shows a notification with its progress, and Android may ask for notification permission.
 
 ## Links, the web and connectors (optional)
 
@@ -41,6 +62,8 @@ To stop syncing, open **Settings → Sync → Stop syncing**. For Google Drive, 
 
 ## Contact
 
-Questions: https://github.com/bandar9994
+Questions about this policy or about your data: **bandar.altariqi@gmail.com**
+
+Project page: https://github.com/bandar9994
 
 This policy is also published at https://bandar9994.github.io/privacy.html.
