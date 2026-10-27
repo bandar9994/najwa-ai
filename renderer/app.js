@@ -128,7 +128,6 @@ const AUTHOR = 'Bandar Altariqi';
 const PROJECT_URL = 'https://github.com/bandar9994/najwa-ai';
 const COPYRIGHT = `© 2026 ${AUTHOR}. All rights reserved.`;
 const COMMERCIAL_URL = `${PROJECT_URL}/issues/new?template=commercial-license.yml`;
-const SUPPORT_URL = 'https://ko-fi.com/bandaraltariqi';
 
 function appName() {
   return (S.info && S.info.appName) || 'Najwa AI';
@@ -2746,6 +2745,7 @@ function openSettings(tab = 'general') {
     },
 
     about() {
+      const support = StoreFlags.support(S.info);
       const showLegal = async (which, title) => {
         let text;
         try {
@@ -2764,9 +2764,10 @@ function openSettings(tab = 'general') {
         h('p', { class: 'about-by' }, 'Created by ', h('strong', { text: AUTHOR })),
         h('p', { class: 'help', text: COPYRIGHT }),
         h('p', { text: 'Najwa AI is a private AI chat app that remembers every chat. It runs models on your device, on your own computer, or in the cloud. Your chats stay on your device.' }),
-        field('Support Najwa AI', h('div', {},
+        // Not in the Google Play build (StoreFlags.support is null there).
+        support ? field('Support Najwa AI', h('div', {},
           h('p', { class: 'help', text: 'Najwa AI is made by one person, with no ads, no tracking and no subscriptions. If it helps you, you can support its development.' }),
-          h('a', { class: 'btn primary', href: SUPPORT_URL, target: '_blank', rel: 'noopener', text: '☕ Support on Ko-fi' }))),
+          h('a', { class: 'btn primary', href: support.url, target: '_blank', rel: 'noopener', text: support.label }))) : null,
         field('License', h('div', {},
           h('p', { class: 'help', text: 'Free for personal, non-commercial use under the Najwa AI License. You may share or change it only if it keeps the Najwa AI name and the "Najwa AI by Bandar Altariqi" credit. It may not be rebranded. Use by or for a company or organisation, or any commercial use, needs a commercial license from Bandar Altariqi.' }),
           h('p', { class: 'help' }, h('a', { href: COMMERCIAL_URL, target: '_blank', rel: 'noopener', text: 'Request a commercial license for your company' })),

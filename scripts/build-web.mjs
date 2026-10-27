@@ -23,6 +23,7 @@ await fs.mkdir(path.join(out, 'wllama'), { recursive: true });
 
 await Promise.all([
   fs.copyFile(r('renderer/app.js'), path.join(out, 'app.js')),
+  fs.copyFile(r('renderer/store-flags.js'), path.join(out, 'store-flags.js')),
   fs.copyFile(r('renderer/speech-text.js'), path.join(out, 'speech-text.js')),
   fs.copyFile(r('renderer/save-queue.js'), path.join(out, 'save-queue.js')),
   fs.copyFile(r('renderer/styles.css'), path.join(out, 'styles.css')),
