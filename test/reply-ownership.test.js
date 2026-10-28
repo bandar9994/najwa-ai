@@ -383,3 +383,45 @@ test('phones that watch are told what the computer pushed, until they go', async
   h.announce({ chats: ['b'] });
   assert.strictEqual(events.length, 2);
 });
+
+// ---- text already shown is never dropped ------------------------------------
+
+test('merge: a finished copy that is shorter takes the longer text of the same reply, whichever device is newer', () => {
+  const phone = reply({ content: 'Book early. Then', stats: { engine: 'GPU' }, tools: [{ name: 'search' }] });
+  const pc = reply({ content: 'Book early. Then compare fares on two sites.', mirrored: true });
+  for (const [x, y] of [[chat(50, q, phone), chat(10, q, pc)], [chat(10, q, phone), chat(50, q, pc)]]) {
+    const m = mergeChats(x, y, { now: NOW }).messages[1];
+    assert.strictEqual(m.content, 'Book early. Then compare fares on two sites.');
+    assert.deepStrictEqual(m.stats, { engine: 'GPU' }, 'the phone\'s steps and stats stay');
+    assert.deepStrictEqual(m.tools, [{ name: 'search' }]);
+  }
+});
+
+test('merge: a cut-off copy with more text is not replaced by a finished-looking shorter one', () => {
+  const phone = reply({ content: 'Book early.' });
+  const pc = reply({ content: 'Book early. Then compare fares.', interrupted: true, notice: 'Cut off.', mirrored: true });
+  for (const [x, y] of [[chat(50, q, phone), chat(10, q, pc)], [chat(10, q, phone), chat(50, q, pc)]]) {
+    const m = mergeChats(x, y, { now: NOW }).messages[1];
+    assert.strictEqual(m.content, 'Book early. Then compare fares.');
+    assert.strictEqual(m.interrupted, true, 'the reply was cut off, so it says so');
+    assert.strictEqual(m.notice, 'Cut off.');
+  }
+});
+
+test('merge: two finished copies that disagree keep the longer text, never the shorter one by default', () => {
+  const phone = reply({ content: 'Book early.' });
+  const pc = reply({ content: 'Fly on Tuesday: it is cheaper.', mirrored: true });
+  for (const [x, y] of [[chat(50, q, phone), chat(10, q, pc)], [chat(10, q, phone), chat(50, q, pc)]]) {
+    assert.strictEqual(mergeChats(x, y, { now: NOW }).messages[1].content, 'Fly on Tuesday: it is cheaper.');
+  }
+});
+
+test('merge: a live owner\'s text and a user\'s edited message are left to their usual rules', () => {
+  const live = reply({ pending: true, content: 'Book', owner: owner('phone', NOW - 1000) });
+  const longerCut = reply({ content: 'Book early. Then', interrupted: true });
+  assert.strictEqual(mergeChats(chat(50, q, live), chat(10, q, longerCut), { now: NOW }).messages[1].pending, true);
+  assert.strictEqual(mergeChats(chat(50, q, live), chat(10, q, longerCut), { now: NOW }).messages[1].content, 'Book');
+  const edited = { ...q, content: 'Cheap ticket?' };
+  const longerOld = { ...q, content: 'Cheapest ticket to Dubai?' };
+  assert.strictEqual(mergeChats(chat(50, edited), chat(10, longerOld), { now: NOW }).messages[0].content, 'Cheap ticket?');
+});
