@@ -139,11 +139,15 @@ test('merge: chats and messages without owners merge as before, and old apps ign
 // ---- what the app does with a chat it loads ------------------------------------
 
 // Runs the real readChat() from renderer/app.js, with a fake storage.
-function readChatWith(stored, deviceId) {
+function readChatWith(stored, deviceId, startedAt = 0) {
   const src = fs.readFileSync(path.join(__dirname, '../renderer/app.js'), 'utf8');
-  const start = src.indexOf('async function readChat(id) {');
-  const body = src.slice(start, src.indexOf('\n}\n', start) + 3);
-  const context = vm.createContext({ Lease, api: { chats: { get: async () => structuredClone(stored) } }, myDeviceId: () => deviceId, Date });
+  const take = (head) => {
+    const start = src.indexOf(head);
+    assert.ok(start >= 0, head);
+    return src.slice(start, src.indexOf('\n}\n', start) + 3);
+  };
+  const body = `${take('function watchedReply(')}${take('async function readChat(id) {')}`;
+  const context = vm.createContext({ Lease, api: { chats: { get: async () => structuredClone(stored) } }, myDeviceId: () => deviceId, APP_STARTED: startedAt, Date });
   return vm.runInContext(`${body}; readChat`, context);
 }
 
@@ -154,7 +158,7 @@ test('loading a chat leaves a reply another device is still writing, and ends ev
     reply({ id: 'mine', pending: true, content: 'Bo', owner: owner('pc', Date.now() - 2000) }),
     reply({ id: 'plain', pending: true }),
     reply({ id: 'done', content: 'Done.' }));
-  const read = await readChatWith(stored, 'pc')('c');
+  const read = await readChatWith(stored, 'pc', Date.now())('c');
   const by = Object.fromEntries(read.messages.filter((m) => m.role === 'assistant').map((m) => [m.id, m]));
   assert.strictEqual(by.live.pending, true, 'live lease of another device stays pending');
   assert.strictEqual(by.live.owner.name, 'Pixel');
@@ -164,6 +168,21 @@ test('loading a chat leaves a reply another device is still writing, and ends ev
   assert.strictEqual(by.mine.pending, false, 'this device is not writing it any more (the app was closed)');
   assert.deepStrictEqual(by.plain, reply({ id: 'plain', pending: false, error: 'This reply was interrupted.' }), 'as before');
   assert.strictEqual(by.done.content, 'Done.');
+});
+
+test('loading a chat on the phone: the computer\'s live copy of this phone\'s own reply is watched, a leftover from before the app started is cut off', async () => {
+  const started = Date.now() - 60_000;
+  const stored = chat(1, q,
+    reply({ id: 'pcCopy', pending: true, content: 'Book early', owner: owner('phone', Date.now() - 3000) }),
+    reply({ id: 'leftover', pending: true, content: 'Bo', owner: owner('phone', started - 5000) }),
+    reply({ id: 'deadCopy', pending: true, content: 'Boo', owner: owner('phone', Date.now() - 10 * 60_000) }));
+  const read = await readChatWith(stored, 'phone', started)('c');
+  const by = Object.fromEntries(read.messages.filter((m) => m.role === 'assistant').map((m) => [m.id, m]));
+  assert.strictEqual(by.pcCopy.pending, true, 'shows as in progress through its lease');
+  assert.ok(Lease.isReplyInProgress(by.pcCopy));
+  assert.strictEqual(by.leftover.pending, false);
+  assert.strictEqual(by.leftover.interrupted, true);
+  assert.strictEqual(by.deadCopy.pending, false);
 });
 
 // ---- the computer's copy of a phone's reply ------------------------------------------
@@ -424,4 +443,35 @@ test('merge: a live owner\'s text and a user\'s edited message are left to their
   const edited = { ...q, content: 'Cheap ticket?' };
   const longerOld = { ...q, content: 'Cheapest ticket to Dubai?' };
   assert.strictEqual(mergeChats(chat(50, edited), chat(10, longerOld), { now: NOW }).messages[0].content, 'Cheap ticket?');
+});
+
+// ---- what shows as in progress ----------------------------------------------
+
+test('a reply is in progress while it is pending and its owner refreshed it within the lease, on any device', () => {
+  const live = reply({ pending: true, content: 'Book', owner: owner('phone', NOW - 5000) });
+  assert.ok(Lease.isReplyInProgress(live, NOW));
+  // Whoever looks: the owner's own device (watching what a computer writes for it) too.
+  assert.strictEqual(Lease.replyInProgress(chat(1, q, live), NOW), live);
+  // Done, interrupted, stale, ownerless or dated far ahead: not in progress.
+  assert.ok(!Lease.isReplyInProgress(reply({ content: 'Book', owner: owner('phone', NOW) }), NOW));
+  assert.ok(!Lease.isReplyInProgress(Lease.interrupt({ ...live, owner: { ...live.owner } }), NOW));
+  assert.ok(!Lease.isReplyInProgress(reply({ pending: true, owner: owner('phone', NOW - Lease.LEASE_MS - 1) }), NOW));
+  assert.ok(!Lease.isReplyInProgress(reply({ pending: true }), NOW));
+  assert.ok(!Lease.isReplyInProgress(reply({ pending: true, owner: owner('phone', NOW + 60 * 60_000) }), NOW));
+  assert.strictEqual(Lease.replyInProgress(chat(1, q, reply({ content: 'x' })), NOW), null);
+  assert.strictEqual(Lease.replyInProgress(null, NOW), null);
+});
+
+test('the in-progress state ends the moment the lease runs out, with no event needed', () => {
+  const m = reply({ pending: true, owner: owner('phone', NOW) });
+  assert.ok(Lease.isReplyInProgress(m, NOW + Lease.LEASE_MS));
+  assert.ok(!Lease.isReplyInProgress(m, NOW + Lease.LEASE_MS + 1));
+  // A heartbeat (every HEARTBEAT_MS) keeps it going.
+  assert.ok(Lease.HEARTBEAT_MS * 3 < Lease.LEASE_MS);
+});
+
+test('the texts for watching a reply exist in English and Arabic', () => {
+  for (const lang of ['en', 'ar']) {
+    for (const k of ['replyingOn', 'stopThere', 'stopFailed']) assert.match(Lease.text(k, 'Pixel', lang), /Pixel/);
+  }
 });

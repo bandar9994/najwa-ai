@@ -38,6 +38,15 @@
   const foreignReply = (msg, deviceId, now = Date.now()) => liveReply(msg, now)
     && !!msg.owner.deviceId && msg.owner.deviceId !== deviceId;
 
+  // A reply that is being written right now, on any device, as far as the
+  // lease says: still pending and its owner refreshed it recently. This is the
+  // one question the busy state of a chat is drawn from, so a reply nobody is
+  // writing any more stops showing as in progress once the lease runs out.
+  const isReplyInProgress = liveReply;
+
+  // The first reply in a chat that is in progress.
+  const replyInProgress = (chat, now = Date.now()) => (chat && chat.messages || []).find((m) => liveReply(m, now)) || null;
+
   const newOwner = (deviceId, name, now = Date.now()) => ({ deviceId: String(deviceId), name: String(name || 'another device').slice(0, 60), ts: now });
 
   // Refresh the lease of a reply this device is writing.
@@ -68,18 +77,22 @@
     en: {
       replyingOn: (name) => `Replying on ${name}…`,
       busyElsewhere: (name) => `A reply is already being written in this chat (on ${name}). Wait for it to finish, or stop it there first.`,
+      stopThere: (name) => `It is running on ${name}: stop it there.`,
+      stopFailed: (name) => `Couldn't stop it from here: the reply is running on ${name}. Stop it there.`,
       busy: () => 'A reply is already being written in this chat. Wait for it to finish, or stop it first. Your message is kept.'
     },
     ar: {
       replyingOn: (name) => `جارٍ الرد على ${name}…`,
       busyElsewhere: (name) => `يُكتب ردٌّ في هذه المحادثة الآن (على ${name}). انتظر حتى ينتهي، أو أوقفه هناك أولاً.`,
+      stopThere: (name) => `يعمل على ${name}: أوقفه هناك.`,
+      stopFailed: (name) => `تعذّر الإيقاف من هنا: الردّ يعمل على ${name}. أوقفه هناك.`,
       busy: () => 'يُكتب ردٌّ في هذه المحادثة الآن. انتظر حتى ينتهي، أو أوقفه أولاً. رسالتك محفوظة.'
     }
   };
   const language = () => (typeof navigator !== 'undefined' && /^ar/i.test(navigator.language || '') ? 'ar' : 'en');
   const text = (key, name, lang = language()) => (STRINGS[lang] || STRINGS.en)[key](name || 'another device');
 
-  const api = { text, STRINGS, LEASE_MS, HEARTBEAT_MS, SKEW_MS, leaseLive, liveReply, foreignReply, foreignInChat, newOwner, touch, interrupt };
+  const api = { text, STRINGS, LEASE_MS, HEARTBEAT_MS, SKEW_MS, leaseLive, liveReply, isReplyInProgress, replyInProgress, foreignReply, foreignInChat, newOwner, touch, interrupt };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Lease = api;
 })(typeof window !== 'undefined' ? window : globalThis);
