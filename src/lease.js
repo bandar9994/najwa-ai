@@ -79,6 +79,8 @@
       busyElsewhere: (name) => `A reply is already being written in this chat (on ${name}). Wait for it to finish, or stop it there first.`,
       stopThere: (name) => `It is running on ${name}: stop it there.`,
       stopFailed: (name) => `Couldn't stop it from here: the reply is running on ${name}. Stop it there.`,
+      queued: () => 'Queued',
+      removeQueued: () => 'Remove from the queue',
       busy: () => 'A reply is already being written in this chat. Wait for it to finish, or stop it first. Your message is kept.'
     },
     ar: {
@@ -86,6 +88,8 @@
       busyElsewhere: (name) => `يُكتب ردٌّ في هذه المحادثة الآن (على ${name}). انتظر حتى ينتهي، أو أوقفه هناك أولاً.`,
       stopThere: (name) => `يعمل على ${name}: أوقفه هناك.`,
       stopFailed: (name) => `تعذّر الإيقاف من هنا: الردّ يعمل على ${name}. أوقفه هناك.`,
+      queued: () => 'في الانتظار',
+      removeQueued: () => 'إزالة من الانتظار',
       busy: () => 'يُكتب ردٌّ في هذه المحادثة الآن. انتظر حتى ينتهي، أو أوقفه أولاً. رسالتك محفوظة.'
     }
   };

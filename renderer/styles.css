@@ -361,11 +361,11 @@ details.thinking summary { cursor: pointer; }
 /* Messages written while a reply is still coming: sent when it's done. */
 .queued { max-width: 820px; margin: 0 auto 8px; display: flex; flex-direction: column; gap: 6px; }
 .queued[hidden] { display: none; }
-.queued-item { display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 12px; border: 1px dashed var(--border); border-radius: 12px; background: var(--bg-user); }
+.queued-item { display: flex; align-items: center; gap: 8px; align-self: flex-end; max-width: 85%; padding-block: 6px; padding-inline: 14px 6px; border: 1px dashed var(--border); border-radius: var(--radius); background: var(--bg-user); opacity: .75; }
 .queued-body { flex: 1; min-width: 0; }
 .queued-label { display: block; font-size: 11px; color: var(--text-dim); }
 .queued-text { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.queued-now { padding: 4px 10px; font-size: 12px; white-space: nowrap; }
+.queued-remove { flex: none; font-size: 18px; line-height: 1; }
 .attachments { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 8px; }
 .attachments[hidden] { display: none; }
 .attachment { position: relative; }

@@ -1091,38 +1091,46 @@ function updateSendButton() {
   if (there) el.busyDot.title = Lease.text('replyingOn', there.owner.name);
   el.composerBox.classList.toggle('busy', busy);
   el.sendBtn.hidden = busy && !el.input.value.trim() && !pictures.length;
-  el.sendBtn.title = streaming ? 'Send (it waits for the reply, or the agent reads it after its current step)' : 'Send';
+  el.sendBtn.title = busy ? 'Send (goes after this reply, or the reply reads it)' : 'Send';
   drawQueued();
 }
 
 // ---------------------------------------------------------------------------
-// messages written while a reply is still coming: they wait above the box
-// and are sent together as soon as the reply is done
+// messages written while a reply is still coming. Some are read by the reply
+// itself or stop it (see midReplyAction); the others wait in a queue under the
+// reply, and go one at a time, in order, when the reply has ended (finished,
+// stopped or cut off). The queue lives in this window only: nothing of it is
+// saved or synced until a message is really sent.
 
-const queued = new Map(); // chat -> [{ text, images }]
+const queuedByChat = new Map(); // chat id -> [{ text, images }]
+const queued = {
+  get: (chat) => queuedByChat.get(chat.id),
+  set: (chat, list) => queuedByChat.set(chat.id, list),
+  delete: (chat) => queuedByChat.delete(chat.id)
+};
+const retryAt = new Map();      // chat id -> when a message the computer refused may be tried again
+const fromQueue = new WeakMap(); // sent user message -> the queued entry it came from
 
 function drawQueued() {
   const list = (S.current && queued.get(S.current)) || [];
   el.queued.hidden = !list.length;
   el.queued.replaceChildren(...list.map((q, i) => h('div', { class: 'queued-item' },
     h('div', { class: 'queued-body' },
-      h('span', { class: 'queued-label', text: 'Sends when the reply is done' }),
+      h('span', { class: 'queued-label', text: Lease.text('queued') }),
       h('span', { class: 'queued-text', dir: 'auto', text: q.text || (q.images.length === 1 ? '1 picture' : `${q.images.length} pictures`) })),
     h('button', {
-      class: 'btn queued-now',
-      title: 'Stop the reply and send this now',
-      text: 'Send now',
-      onclick: () => interruptFor(S.current)
-    }),
-    h('button', {
-      class: 'icon-btn',
-      title: 'Edit (moves it back to the box)',
-      'aria-label': 'Edit this message',
-      text: '✎',
+      class: 'icon-btn queued-remove',
+      title: Lease.text('removeQueued'),
+      'aria-label': Lease.text('removeQueued'),
+      text: '×',
       onclick: () => {
-        list.splice(i, 1);
-        if (!list.length) queued.delete(S.current);
-        putBack(S.current, [q]);
+        const now = queued.get(S.current) || [];
+        const at = now.indexOf(q);
+        if (at < 0) return;
+        now.splice(at, 1);
+        if (!now.length) queued.delete(S.current);
+        drawQueued();
+        updateSendButton();
       }
     }))));
 }
@@ -1154,13 +1162,24 @@ function putBack(chat, list) {
   updateSendButton();
 }
 
-// A message sent while a reply is written, as in Claude. Hermes, and replies
-// working with tools, read it after their current step, so it shows among
-// the reply's steps. Otherwise it waits above the box and goes when the reply
-// is done, unless "Send now" interrupts the reply (see interruptFor).
+// What a message sent while a reply is written does, by who writes the reply:
+//   'steer': the reply reads it after its current step (a reply working with
+//            tools), or, written as plain text, stops where it is and the
+//            message goes right away as the next one.
+//   'queue': it waits and goes when the reply has ended. Hermes Agent, and a
+//            computer's models used from the phone (the private link has no
+//            way to hand a message to a reply that is running there).
+function midReplyAction(model) {
+  if (isAgent(model)) return 'queue';
+  if (model && model.provider === 'computer') return 'queue';
+  return 'steer';
+}
+
+// A message sent while a reply is written (see midReplyAction).
 async function sendWhileReplying(chat, text, images) {
   const found = [...S.requests].find(([, r]) => r.chat === chat);
-  if (found && text && !images.length && api.ai.steer) {
+  const action = found ? midReplyAction(found[1].msg.model) : 'queue';
+  if (found && action === 'steer' && text && !images.length && api.ai.steer) {
     const [requestId, r] = found;
     const step = { id: uid(), emoji: '💬', label: `You: ${text.replace(/\s+/g, ' ')}`.slice(0, 500), text: text.slice(0, 8000), steer: true, status: 'sending' };
     (r.msg.tools = r.msg.tools || []).push(step);
@@ -1177,13 +1196,15 @@ async function sendWhileReplying(chat, text, images) {
     r.msg.tools.splice(r.msg.tools.indexOf(step), 1);
     scheduleMessageRender(chat, r.msg);
   }
+  queued.set(chat, [...(queued.get(chat) || []), { text, images }]);
   if (isStreaming(chat)) {
-    queued.set(chat, [...(queued.get(chat) || []), { text, images }]);
+    // Plain text: the reply stops here (what it wrote is kept) and this goes next.
+    if (action === 'steer') interruptFor(chat);
   } else {
     // The reply ended meanwhile: this is simply the next message.
-    queued.set(chat, [{ text, images }]);
-    sendQueued(chat, { ok: true });
+    flushQueued(chat);
   }
+  drawQueued();
 }
 
 // When a reply ends: messages it read are marked read; ones it never got to
@@ -1199,21 +1220,49 @@ function settleSteers(chat, msg, res) {
   queued.set(chat, [...unread.map((t) => ({ text: t.text, images: [] })), ...(queued.get(chat) || [])]);
 }
 
-// After a reply: send what was written meanwhile, as one message.
+// Only when nothing is being written in the chat, here or on another device.
+function canSendQueued(chat, now = Date.now()) {
+  return !isStreaming(chat) && !replyElsewhere(chat) && !((retryAt.get(chat.id) || 0) > now);
+}
+
+// After a reply: the next waiting message goes (one at a time; the reply to it
+// sends the one after). A reply that failed keeps them in the box instead.
 function sendQueued(chat, res) {
   const list = queued.get(chat);
   if (!list || !list.length) return;
-  queued.delete(chat);
-  if (S.cache.get(chat.id) !== chat) return; // the chat was deleted
-  if (!res.ok || res.aborted) {
+  const live = S.cache.get(chat.id);
+  if (!live) { queued.delete(chat); return; } // the chat was deleted
+  chat = live;
+  if (!res.ok && !res.aborted) {
+    queued.delete(chat);
     putBack(chat, list);
     if (S.current === chat) toast('Your message wasn\'t sent. It\'s back in the box.');
     return;
   }
-  const text = list.map((q) => q.text).filter(Boolean).join('\n\n');
-  const images = list.flatMap((q) => q.images);
-  chat.messages.push({ id: uid(), role: 'user', content: text, ...(images.length ? { images } : {}), createdAt: Date.now() });
+  // Another device is still writing: it waits, and flushQueued sends it later.
+  if (!canSendQueued(chat)) { drawQueued(); return; }
+  const [first, ...rest] = list;
+  if (rest.length) queued.set(chat, rest); else queued.delete(chat);
+  const message = { id: uid(), role: 'user', content: first.text, ...(first.images.length ? { images: first.images } : {}), createdAt: Date.now() };
+  fromQueue.set(message, first);
+  chat.messages.push(message);
   runCompletion(chat);
+  drawQueued();
+}
+
+// Sends the next waiting message if the chat is free (a reply on another
+// device has ended, its lease ran out, or the computer's refusal has passed).
+function flushQueued(chat) {
+  const list = queued.get(chat);
+  if (list && list.length && canSendQueued(chat)) sendQueued(chat, { ok: true });
+}
+
+function flushAllQueued() {
+  for (const id of [...queuedByChat.keys()]) {
+    const chat = S.cache.get(id);
+    if (chat) flushQueued(chat);
+    else loadChat(id).then((c) => { if (c) flushQueued(c); else queuedByChat.delete(id); }).catch(() => {});
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1538,6 +1587,7 @@ async function openChat(id) {
   scrollToBottom();
   closeDrawer();
   focusInput();
+  flushQueued(chat);
 }
 
 function newChat() {
@@ -1915,11 +1965,21 @@ async function send() {
   const images = pictures.slice();
   if (!text && !images.length) return;
   dropDictation();
-  // Another device is writing a reply here: wait for it (the text stays in the box).
-  const elsewhere = replyElsewhere(S.current);
-  if (elsewhere) {
-    toast(Lease.text('busyElsewhere', elsewhere.owner.name));
-    return;
+  // Another device is writing a reply here, or messages are already waiting:
+  // this one waits too, and goes in order when the chat is free.
+  {
+    const chat = S.current;
+    if (chat && !isStreaming(chat) && (replyElsewhere(chat) || (queued.get(chat) || []).length)) {
+      pictures = [];
+      drawPictures();
+      el.input.value = '';
+      autoGrow();
+      saveDraft(chat.id, '');
+      queued.set(chat, [...(queued.get(chat) || []), { text, images }]);
+      flushQueued(chat);
+      updateSendButton();
+      return;
+    }
   }
   // A reply is still coming: the model reads this mid-way if it can,
   // otherwise it waits and goes when the reply is done.
@@ -2049,7 +2109,18 @@ async function runCompletion(chat) {
     const at = chat.messages.indexOf(msg);
     if (at >= 0) chat.messages.splice(at, 1);
     if (V.reading && V.reading.msg === msg) stopReading();
-    toast(Lease.text('busy'), 6000);
+    // A message that came from the queue stays queued (and is tried again a
+    // few seconds on, see flushAllQueued) instead of being dropped.
+    const entry = fromQueue.get(asker);
+    const askAt = chat.messages.indexOf(asker);
+    if (entry && askAt >= 0) {
+      chat.messages.splice(askAt, 1);
+      queued.set(chat, [entry, ...(queued.get(chat) || [])]);
+      retryAt.set(chat.id, Date.now() + 5000);
+      setTimeout(() => { const live = S.cache.get(chat.id); if (live) flushQueued(live); }, 5200);
+    } else {
+      toast(Lease.text('busy'), 6000);
+    }
     await saveChatNow(chat);
     if (S.current === chat) renderChat();
     updateComposer();
@@ -2339,6 +2410,7 @@ function adoptOpenChat(fresh) {
     });
     updateComposer();
   }
+  flushQueued(fresh);
   if (stick) scrollToBottom();
 }
 
@@ -3459,7 +3531,7 @@ function bindEvents() {
   if (api.sync) {
     api.sync.onEvent(onSyncEvent);
     setInterval(renderSyncBadge, 30 * 1000);
-    setInterval(expireLeases, 10 * 1000);
+    setInterval(() => { expireLeases(); flushAllQueued(); }, 10 * 1000);
   }
 }
 
