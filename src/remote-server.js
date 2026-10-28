@@ -23,12 +23,24 @@ const BODY_IDLE_MS = 30 * 1000;  // a request body that stops arriving
 const HEADERS_TIMEOUT_MS = 15 * 1000;
 const REQUEST_TIMEOUT_MS = 2 * 60 * 1000;  // the whole request, 64 MB on a slow link included
 const KEEP_ALIVE_MS = 5 * 1000;
+// A reply written for a phone that also names its chat and message is kept in
+// this computer's copy of the chat (see reply-hub.js): it is this computer's
+// reply, and it carries on when the phone goes away (Android freezes or kills
+// an app in the background after a minute or so). Only after this long with
+// no phone at all is it given up, and then it is marked as interrupted.
+const AWAY_MS = 60 * 60 * 1000;
 const MAX_FAILURES = 10;  // refused requests per address within FAIL_WINDOW_MS, then 429
 const FAIL_WINDOW_MS = 60 * 1000;
 
 // The pages the phone app runs in: iOS (capacitor://localhost) and Android
 // (https://localhost, or http:// with the older setting). Requests without an
 // Origin (no web page involved) are fine too.
+// Why a reply was stopped, as the abort signal's `reason` (handlers can tell
+// the user pressing Stop from the computer giving up on a reply):
+const STOPPED = 'stopped';  // the user pressed Stop
+const LOST = 'lost';        // no one came back for it, or sharing was turned off
+const GAVE_UP = 'This reply was cut off on the computer: the phone was away too long, or sharing was turned off.';
+
 const ALLOWED_ORIGINS = new Set(['https://localhost', 'capacitor://localhost', 'http://localhost', 'ionic://localhost']);
 
 // IPv4 addresses the phone might reach this computer on: Wi-Fi/Ethernet, and
@@ -51,7 +63,7 @@ function localAddresses(interfaces = os.networkInterfaces()) {
  * @param handlers  { op: async (msg, { emit, signal }) => result }
  * @param limits    overrides for the limits above, for tests
  */
-function startRemoteServer({ getKey, handlers, port = PORT, host = '0.0.0.0', heartbeatMs = 15000, graceMs = 5 * 60 * 1000, limits = {} }) {
+function startRemoteServer({ getKey, handlers, port = PORT, host = '0.0.0.0', heartbeatMs = 15000, graceMs = 5 * 60 * 1000, awayMs = AWAY_MS, limits = {} }) {
   const maxBody = limits.maxBody ?? MAX_BODY;
   const smallBody = limits.smallBody ?? SMALL_BODY;
   const maxBigReads = limits.maxBigReads ?? MAX_BIG_READS;
@@ -194,7 +206,7 @@ function startRemoteServer({ getKey, handlers, port = PORT, host = '0.0.0.0', he
     // Replies the phone can pick up again after a lost connection (see Job).
     if (msg.op === 'cancel') {
       const job = jobs.get(String(msg.job));
-      if (job) job.controller.abort();
+      if (job) job.controller.abort(STOPPED);
       const write = open(res, key, msg.nonce);
       await write({ t: 'done', result: null });
       res.end();
@@ -228,7 +240,7 @@ function startRemoteServer({ getKey, handlers, port = PORT, host = '0.0.0.0', he
     const write = open(res, key, msg.nonce);
     const controller = new AbortController();
     res.on('close', () => {
-      if (!res.writableFinished) controller.abort();
+      if (!res.writableFinished) controller.abort(LOST);
     });
     const emit = batcher(write);
     // A heartbeat while the model is busy (loading, reading a long chat,
@@ -290,7 +302,10 @@ function startRemoteServer({ getKey, handlers, port = PORT, host = '0.0.0.0', he
   // text stopped. With no one following it for `graceMs`, it's stopped; a
   // finished one is kept as long, for a phone that comes back late.
   function startJob(id, handler, msg) {
-    const job = { id, events: [], listeners: new Set(), finished: false, controller: new AbortController(), timer: null };
+    // This computer keeps the reply itself (and shows it in its own chat):
+    // it waits much longer for a phone that went away.
+    const kept = typeof msg.chatId === 'string' && !!msg.chatId && !!msg.reply && typeof msg.reply.id === 'string' && typeof msg.deviceId === 'string';
+    const job = { id, events: [], listeners: new Set(), finished: false, controller: new AbortController(), timer: null, away: kept ? awayMs : graceMs };
     const push = (evt) => {
       if (job.finished) return;
       job.events.push(evt);
@@ -305,7 +320,7 @@ function startRemoteServer({ getKey, handlers, port = PORT, host = '0.0.0.0', he
     job.unfollowed = () => {
       if (job.finished || job.listeners.size) return;
       clearTimeout(job.timer);
-      job.timer = setTimeout(() => job.controller.abort(), graceMs);
+      job.timer = setTimeout(() => job.controller.abort(LOST), job.away);
       if (job.timer.unref) job.timer.unref();
     };
     jobs.set(id, job);
@@ -314,10 +329,14 @@ function startRemoteServer({ getKey, handlers, port = PORT, host = '0.0.0.0', he
       try {
         const result = await handler(msg, { emit, signal: job.controller.signal });
         emit.flush();
+        // Given up on (not stopped by the user) but the model returned what it
+        // had: that is a cut-off reply, not a finished one.
+        if (job.controller.signal.aborted && job.controller.signal.reason === LOST) throw new Error(GAVE_UP);
         push({ t: 'done', result: result === undefined ? null : result });
       } catch (err) {
         emit.flush();
-        push({ t: 'error', message: err.message || String(err), ...(err.code === 'busy' ? { code: 'busy' } : {}) });
+        const gaveUp = job.controller.signal.aborted && job.controller.signal.reason === LOST;
+        push({ t: 'error', message: gaveUp ? GAVE_UP : err.message || String(err), ...(err.code === 'busy' ? { code: 'busy' } : {}) });
       }
     })();
     return job;
@@ -377,7 +396,7 @@ function startRemoteServer({ getKey, handlers, port = PORT, host = '0.0.0.0', he
           port: server.address().port,
           close: () => new Promise((r) => {
             // Sharing stops: so do the replies still being written.
-            for (const job of jobs.values()) job.controller.abort();
+            for (const job of jobs.values()) job.controller.abort(LOST);
             jobs.clear();
             server.close(() => r());
             server.closeAllConnections?.();
@@ -389,4 +408,4 @@ function startRemoteServer({ getKey, handlers, port = PORT, host = '0.0.0.0', he
   });
 }
 
-module.exports = { startRemoteServer, localAddresses };
+module.exports = { startRemoteServer, localAddresses, STOPPED, LOST };
