@@ -166,8 +166,9 @@ button { font: inherit; color: inherit; }
   min-height: 56px;
 }
 #chatTitle {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
+  text-align: start;
   margin: 0;
   font-size: 15px;
   font-weight: 600;
@@ -177,7 +178,7 @@ button { font: inherit; color: inherit; }
   cursor: text;
 }
 .topbar-controls { display: flex; align-items: center; gap: 6px; }
-#modelSelect { max-width: 260px; }
+#modelSelect { max-width: 260px; min-width: 0; text-overflow: ellipsis; }
 #assistantSelect { max-width: 170px; }
 
 #messages { flex: 1; overflow-y: auto; padding: 24px 16px 8px; }
@@ -439,7 +440,7 @@ textarea.input { resize: vertical; }
 .menu-wrap { position: relative; }
 .menu {
   position: absolute;
-  right: 0;
+  inset-inline-end: 0;
   top: 36px;
   z-index: 20;
   min-width: 200px;
@@ -593,10 +594,19 @@ textarea.input { resize: vertical; }
   }
   .chat-item { padding: 10px 8px; }
 
-  #topbar { padding: 8px 8px; gap: 4px; min-height: 52px; }
-  #chatTitle { font-size: 16px; }
+  #topbar { padding-block: 8px; padding-inline: 8px; gap: 4px; min-height: 52px; }
+  /* The title comes first: it may use two lines instead of a single clipped one. */
+  #chatTitle {
+    font-size: 16px;
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow-wrap: anywhere;
+  }
   #assistantSelect, #refreshModelsBtn { display: none; }
-  #modelSelect { max-width: 42vw; font-size: 13px; }
+  #modelSelect { max-width: 40vw; font-size: 13px; }
   .icon-btn { width: 40px; height: 40px; font-size: 18px; }
 
   #messages { padding: 16px 12px 8px; }
@@ -630,8 +640,19 @@ textarea.input { resize: vertical; }
   .od-row { flex-wrap: wrap; }
   .od-actions { width: 100%; justify-content: flex-end; }
   .progress { flex: 1; }
-  .menu { right: 0; }
+  .menu { inset-inline-end: 0; }
   #toast { bottom: 110px; }
+}
+
+/* Narrow phones (360-420 dp): the title and the model name cannot share one
+   row, so the model picker moves to its own row under the title. The title
+   keeps the whole width between the menu button and the ☰ button. */
+@media (max-width: 480px) {
+  #topbar { flex-wrap: wrap; row-gap: 2px; }
+  /* basis 0: with the default auto basis a long title would fill the row and push the menu button down */
+  #chatTitle { flex: 1 1 0; }
+  .topbar-controls { display: contents; }
+  #modelSelect { order: 1; flex: 1 1 100%; width: 100%; max-width: none; margin-block-end: 2px; }
 }
 .msg .msg-notice { margin-top: 8px; font-size: 12px; color: var(--text-dim); font-style: italic; }
 .msg .meta .stats { cursor: pointer; }
