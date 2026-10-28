@@ -375,6 +375,15 @@ function replyWriter(onDelta) {
 const RUN_RECONNECT_MS = [500, 1000, 2000, 4000, 8000, 15000, 15000, 15000];
 const RUN_FINISHED = new Set(['completed', 'failed', 'cancelled', 'interrupted']);
 
+// Why Hermes ended a turn before the task was done (turn_exit_reason), in words.
+function exitReason(reason) {
+  if (typeof reason !== 'string' || !reason.trim()) return '';
+  const steps = /^max_iterations_reached\((\d+)\/(\d+)\)/.exec(reason);
+  if (steps) return `it used all of its ${steps[2]} steps for one reply. Send "continue" and it will carry on.`;
+  if (/^max_iterations/.test(reason)) return 'it used all of its steps for one reply. Send "continue" and it will carry on.';
+  return `it ended the turn early (${reason.trim().slice(0, 80)}).`;
+}
+
 const abortError = () => {
   const err = new Error('The operation was aborted.');
   err.name = 'AbortError';
@@ -553,11 +562,17 @@ const hermesProvider = (doFetch = (...args) => fetch(...args)) => {
       }
       // pending_steer: what the user added that the agent never got to read.
       const pendingSteer = typeof end.pending_steer === 'string' ? end.pending_steer : '';
-      if (end.event === 'run.completed') return { output: typeof end.output === 'string' ? end.output : '', missed, pendingSteer };
+      // Newer Hermes ends a turn that stopped half way (its step budget ran out, a partial reply) as
+      // run.failed with a turn_exit_reason; a run.completed that says it did not finish is the same.
+      const unfinished = end.event === 'run.completed' && (end.completed === false || end.partial === true);
+      if (end.event === 'run.completed' && !unfinished) return { output: typeof end.output === 'string' ? end.output : '', missed, pendingSteer };
       if (end.event === 'run.cancelled') {
         if (signal && signal.aborted) throw abortError();
         throw new Error('Hermes stopped this run before it finished.');
       }
+      const why = exitReason(end.turn_exit_reason);
+      if (why) throw new Error(`Hermes stopped before it finished: ${why}`);
+      if (unfinished) throw new Error('Hermes stopped before it finished. Check the Hermes gateway\'s log for details.');
       throw new Error(end.error ? `Hermes couldn't finish: ${end.error}` : 'Hermes couldn\'t finish this run. Check the Hermes gateway\'s log for details.');
     } finally {
       if (signal) signal.removeEventListener('abort', stop);
@@ -574,8 +589,14 @@ const hermesProvider = (doFetch = (...args) => fetch(...args)) => {
     });
     if (!res.ok) throw await hermesError(res);
     let stopReason = 'end_turn';
+    // The stream has to end the way Hermes ends it ([DONE], or a finish_reason):
+    // a connection that just closes is a reply that stopped half way.
+    let ended = false;
     for await (const { event, data } of readSse(res.body)) {
-      if (data === '[DONE]') break;
+      if (data === '[DONE]') {
+        ended = true;
+        break;
+      }
       let evt;
       try {
         evt = JSON.parse(data);
@@ -608,11 +629,14 @@ const hermesProvider = (doFetch = (...args) => fetch(...args)) => {
       w.reasoning(delta.reasoning_content);
       w.answer(delta.content);
       if (choice && choice.finish_reason) {
+        ended = true;
         if (choice.finish_reason === 'length') stopReason = 'max_tokens';
         else if (choice.finish_reason !== 'stop') stopReason = choice.finish_reason;
       }
     }
     w.close();
+    if (!ended && signal && signal.aborted) throw abortError();
+    if (!ended) throw new Error('Hermes stopped sending the reply before it was finished (the connection closed). It may still be working on your computer: check Hermes, or send "continue".');
     if (stopReason !== 'end_turn' && stopReason !== 'max_tokens' && !w.answered) {
       throw new Error(`Hermes stopped before answering (${stopReason}). Check the Hermes gateway's log for details.`);
     }

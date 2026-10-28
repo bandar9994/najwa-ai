@@ -111,6 +111,7 @@ function createReplyHub({ storage, name = () => 'this computer', notify = () => 
           m.pending = true;
           delete m.interrupted;
           if (m.error === INTERRUPTED) delete m.error;
+          if (m.notice === Lease.INTERRUPTED_NOTICE) delete m.notice;
         } else if (!m.pending) {
           over = true;  // finished on the phone meanwhile
           return false;
