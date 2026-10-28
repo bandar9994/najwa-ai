@@ -37,6 +37,13 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # The About page shows app.getVersion(), which is package.json's version.
+      # Stamp 1.0.<run number> (like the Android and iOS builds) so each build
+      # reports its own version. Installer names are renamed to fixed names in
+      # the publish job, so they don't depend on it.
+      - name: Set the app version
+        shell: bash
+        run: npm version "1.0.${GITHUB_RUN_NUMBER}" --no-git-tag-version --allow-same-version
       # Google sign-in for Drive sync. Without these secrets the app still
       # builds, but only offers GitHub for sync.
       - name: Add Google sign-in client
@@ -109,7 +116,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          notes="Newest desktop build (from ${GITHUB_SHA::7}, $(date -u '+%Y-%m-%d %H:%M UTC')). Windows: Najwa-AI-Windows-Setup.exe. Mac: Najwa-AI-macOS-AppleSilicon.dmg (M1 and newer) or Najwa-AI-macOS-Intel.dmg. Linux: Najwa-AI-Linux.AppImage or Najwa-AI-Linux.deb."
+          VERSION="1.0.${GITHUB_RUN_NUMBER}"
+          notes="Najwa AI ${VERSION} for desktop (from ${GITHUB_SHA::7}, $(date -u '+%Y-%m-%d %H:%M UTC')). Windows: Najwa-AI-Windows-Setup.exe. Mac: Najwa-AI-macOS-AppleSilicon.dmg (M1 and newer) or Najwa-AI-macOS-Intel.dmg. Linux: Najwa-AI-Linux.AppImage or Najwa-AI-Linux.deb."
           if ! gh release view desktop-latest >/dev/null 2>&1; then
             gh release create desktop-latest --prerelease --target "$GITHUB_SHA" --title "Najwa AI for Windows, macOS and Linux (latest build)" --notes "$notes"
           fi
