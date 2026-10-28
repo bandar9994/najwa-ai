@@ -732,8 +732,8 @@ textarea.input { resize: vertical; }
   text-decoration: none;
 }
 .msg .link-chip.failed { color: var(--danger); }
-.msg .recalled { margin-top: 8px; font-size: 12px; color: var(--text-dim); }
-.msg .recalled a { color: var(--accent); }
+.msg .recalled { margin-top: 8px; }
+.msg .recalled a { display: block; margin: 4px 0 0; padding-inline-start: 16px; font-size: 13px; color: var(--accent); overflow-wrap: anywhere; }
 .memory-count { margin-top: 4px; }
 .memory-count.over { color: var(--danger); }
 

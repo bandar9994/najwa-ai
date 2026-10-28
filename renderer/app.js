@@ -740,8 +740,10 @@ function renderMessage(chat, msg, index) {
         class: `link-chip${l.error ? ' failed' : ''}`, href: l.url, target: '_blank', rel: 'noopener noreferrer', title: l.error || l.url,
         text: l.error ? `⚠️ Couldn't read ${siteOf(l.url)}` : `🔗 Read ${siteOf(l.url)}${l.title ? ` · ${l.title}` : ''}`
       }))) : null,
-      msg.recalled && msg.recalled.length ? h('div', { class: 'recalled' }, 'Used earlier chats: ',
-        ...msg.recalled.flatMap((r, i) => [i ? ', ' : null, h('a', { href: '#', text: r.title, onclick: (e) => { e.preventDefault(); openChat(r.chatId); } })])) : null,
+      // Folded like "Used 4 tools"; the chat links show when opened.
+      msg.recalled && msg.recalled.length ? h('details', { class: 'agent-done recalled' },
+        h('summary', { text: `Used ${msg.recalled.length} earlier chat${msg.recalled.length === 1 ? '' : 's'}` }),
+        ...msg.recalled.map((r) => h('a', { href: '#', dir: 'auto', text: r.title, onclick: (e) => { e.preventDefault(); openChat(r.chatId); } }))) : null,
       msg.error ? h('div', { class: 'error', text: msg.error }) : null,
       msg.notice ? h('div', { class: 'msg-notice', text: msg.notice }) : null,
       msg.pending ? null : actions));
