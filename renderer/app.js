@@ -196,6 +196,18 @@ function getAssistant(id) {
   return list.find((p) => p.id === id) || list[0] || { id: 'none', name: 'Assistant', emoji: '🤖', systemPrompt: '' };
 }
 
+// The chat object the window is showing now. A message's buttons were made
+// for the chat object that existed when it was drawn, but sync can swap in a
+// fresh copy of the open chat without redrawing the messages that didn't
+// change (adoptOpenChat), and an action on the old copy would run, and save,
+// somewhere the window isn't looking: Regenerate would seem to do nothing.
+function liveChat(chat) {
+  if (!chat) return chat;
+  if (S.current && S.current.id === chat.id) return S.current;
+  return S.cache.get(chat.id) || chat;
+}
+const liveMessage = (chat, msg) => (msg && msg.id && chat.messages.find((m) => m.id === msg.id)) || msg;
+
 function isStreaming(chat) {
   if (!chat) return false;
   for (const r of S.requests.values()) if (r.chat === chat) return true;
@@ -694,7 +706,7 @@ function renderMessage(chat, msg, index) {
     onclick: () => { navigator.clipboard.writeText(splitThinking(msg.content).answer.trim()); toast('Copied'); }
   }));
   if (isUser) {
-    actions.append(h('button', { text: 'Edit', onclick: () => startEdit(chat, msg, node) }));
+    actions.append(h('button', { text: 'Edit', onclick: () => { const now = liveChat(chat); startEdit(now, liveMessage(now, msg), node); } }));
     actions.append(h('button', { text: 'Remember', title: 'Add this to memory', onclick: () => rememberText(msg.content) }));
   } else {
     if (canSpeak() && msg.content) {
@@ -705,8 +717,8 @@ function renderMessage(chat, msg, index) {
       }));
     }
     const isLast = index === chat.messages.length - 1;
-    if (isLast) actions.append(h('button', { text: 'Regenerate', onclick: () => regenerate(chat) }));
-    actions.append(h('button', { text: 'Delete', onclick: () => deleteMessage(chat, msg) }));
+    if (isLast) actions.append(h('button', { text: 'Regenerate', onclick: () => regenerate(liveChat(chat)) }));
+    actions.append(h('button', { text: 'Delete', onclick: () => { const now = liveChat(chat); deleteMessage(now, liveMessage(now, msg)); } }));
   }
 
   const when = msg.createdAt ? new Date(msg.createdAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '';
@@ -1980,7 +1992,7 @@ async function runCompletion(chat) {
     replyId: msg.id,
     replyAt: msg.createdAt,
     replyModel: model
-  });
+  }).catch((err) => ({ ok: false, error: (err && err.message) || String(err) }));
 
   S.requests.delete(requestId);
   clearInterval(beat);
@@ -2085,9 +2097,18 @@ function stopCurrent() {
 }
 
 async function regenerate(chat) {
-  if (isStreaming(chat)) return;
+  if (isStreaming(chat)) {
+    toast('A reply is still being written in this chat. Stop it first, or wait for it to finish.');
+    return;
+  }
   if (!chatModel(chat)) {
     toast('Choose a model first (top right).');
+    return;
+  }
+  // Check before the old reply is taken out, so a refusal leaves it in place.
+  const there = replyElsewhere(chat);
+  if (there) {
+    toast(Lease.text('busyElsewhere', there.owner.name));
     return;
   }
   const last = chat.messages[chat.messages.length - 1];
@@ -2098,7 +2119,10 @@ async function regenerate(chat) {
 }
 
 async function deleteMessage(chat, msg) {
-  if (isStreaming(chat)) return;
+  if (isStreaming(chat)) {
+    toast('A reply is still being written in this chat. Stop it first, or wait for it to finish.');
+    return;
+  }
   if (V.reading && V.reading.msg === msg) stopReading();
   chat.messages = chat.messages.filter((m) => m !== msg);
   await saveChatNow(chat);
@@ -2106,7 +2130,10 @@ async function deleteMessage(chat, msg) {
 }
 
 function startEdit(chat, msg, node) {
-  if (isStreaming(chat)) return;
+  if (isStreaming(chat)) {
+    toast('A reply is still being written in this chat. Stop it first, or wait for it to finish.');
+    return;
+  }
   const body = node.querySelector('.body');
   const area = h('textarea', { class: 'input', value: msg.content });
   const box = h('div', { class: 'edit-box' }, area,
