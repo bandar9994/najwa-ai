@@ -55,12 +55,17 @@
     return msg;
   }
 
+  // What a reply that was cut off after it had text says, so it never looks finished.
+  const INTERRUPTED_NOTICE = 'This reply stopped before it was finished: the device writing it went quiet. Tap Regenerate to ask again.';
+
   // A reply that is still marked as being written but isn't (any more): ends
-  // it the way a reply cut off by closing the app always ended, and flags it
-  // when it had an owner, so a copy that finished elsewhere replaces it.
+  // it the way a reply cut off by closing the app always ended, flags it
+  // when it had an owner, so a copy that finished elsewhere replaces it, and
+  // says so when it had text (it must not look like a finished reply).
   function interrupt(msg) {
     msg.pending = false;
     if (!msg.content) msg.error = 'This reply was interrupted.';
+    else if (!msg.notice) msg.notice = INTERRUPTED_NOTICE;
     if (msg.owner) {
       msg.interrupted = true;
       delete msg.owner;
@@ -144,7 +149,7 @@
   const language = () => (typeof navigator !== 'undefined' && /^ar/i.test(navigator.language || '') ? 'ar' : 'en');
   const text = (key, name, lang = language()) => (STRINGS[lang] || STRINGS.en)[key](name || 'another device');
 
-  const api = { text, runningOn, replyingLabel, STRINGS, LEASE_MS, HEARTBEAT_MS, SKEW_MS, leaseLive, liveReply, isReplyInProgress, replyInProgress, foreignReply, foreignInChat, newOwner, touch, interrupt };
+  const api = { text, runningOn, replyingLabel, STRINGS, LEASE_MS, HEARTBEAT_MS, SKEW_MS, INTERRUPTED_NOTICE, leaseLive, liveReply, isReplyInProgress, replyInProgress, foreignReply, foreignInChat, newOwner, touch, interrupt };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Lease = api;
 })(typeof window !== 'undefined' ? window : globalThis);
