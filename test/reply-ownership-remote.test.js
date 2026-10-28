@@ -279,7 +279,10 @@ test('Stop pressed on the computer for a reply the phone asked for stops it as a
     assert.strictEqual(m.pending, false);
     assert.ok(!m.interrupted && !m.notice && !m.error);
     assert.notStrictEqual(m.content, 'One two three four five six.');
-    assert.strictEqual(pc.server.stopChat(id), 0, 'nothing left to stop');
+    // (The job itself ends a moment after the chat is saved.)
+    let left = 1;
+    for (let i = 0; i < 50 && left; i++) { left = pc.server.stopChat(id); if (left) await sleep(20); }
+    assert.strictEqual(left, 0, 'nothing left to stop');
   } finally {
     await pc.server.close();
   }
