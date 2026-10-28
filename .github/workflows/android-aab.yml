@@ -51,6 +51,7 @@ jobs:
           java-version: 21
       - run: npm ci
       - run: npm test
+        timeout-minutes: 15
       - run: npm run build:web
       - run: npx cap sync android
       - name: Decode the upload key

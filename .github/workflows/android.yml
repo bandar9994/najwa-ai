@@ -10,6 +10,7 @@ on:
 jobs:
   apk:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write  # to publish the APK to the "android-latest" release
     env:
