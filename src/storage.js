@@ -326,23 +326,48 @@ class Storage {
         const current = this.index.find((c) => c.id === chat.id);
         if ((current ? current.rev : null) !== expect) return null;
       }
-      chat.updatedAt = chat.updatedAt || Date.now();
-      chat.createdAt = chat.createdAt || chat.updatedAt;
-      if (local || !chat.modifiedAt) chat.modifiedAt = Math.max(Date.now(), (chat.modifiedAt || 0) + 1);
-      // Every local save gets a new revision id, so sync can tell versions
-      // apart even when two devices save in the same millisecond.
-      if (local) chat.rev = newId();
-      else chat.rev = chat.rev || `m${chat.modifiedAt}`;
-      await this._writeJson(file, chat);
-      const meta = this._meta(chat);
-      const i = this.index.findIndex((c) => c.id === chat.id);
-      if (i >= 0) this.index[i] = meta;
-      else this.index.push(meta);
-      await this._saveIndex();
-      if (!local) await this._dropTombstones([chat.id]);
-      return chat;
+      return this._commitChat(chat, file, local);
     });
     if (local) run.then(() => this._changed('chat'), () => {});
+    return run;
+  }
+
+  async _commitChat(chat, file, local) {
+    chat.updatedAt = chat.updatedAt || Date.now();
+    chat.createdAt = chat.createdAt || chat.updatedAt;
+    if (local || !chat.modifiedAt) chat.modifiedAt = Math.max(Date.now(), (chat.modifiedAt || 0) + 1);
+    // Every local save gets a new revision id, so sync can tell versions
+    // apart even when two devices save in the same millisecond.
+    if (local) chat.rev = newId();
+    else chat.rev = chat.rev || `m${chat.modifiedAt}`;
+    await this._writeJson(file, chat);
+    const meta = this._meta(chat);
+    const i = this.index.findIndex((c) => c.id === chat.id);
+    if (i >= 0) this.index[i] = meta;
+    else this.index.push(meta);
+    await this._saveIndex();
+    if (!local) await this._dropTombstones([chat.id]);
+    return chat;
+  }
+
+  // Change a chat that is stored, read and written as one step: `change(chat)`
+  // edits the chat in place (return false to leave it as it is). Used by the
+  // desktop app's main process to add to a chat the window may also be saving.
+  // Resolves to the saved chat, or null if there is no such chat or nothing
+  // was changed.
+  updateChat(id, change) {
+    let file;
+    try {
+      file = this._chatFile(id);
+    } catch (err) {
+      return Promise.reject(err);
+    }
+    const run = this._serial(async () => {
+      const chat = upgradeChat(await this._readJson(file, null));
+      if (!chat || change(chat) === false) return null;
+      return this._commitChat(chat, file, true);
+    });
+    run.then((saved) => saved && this._changed('chat'), () => {});
     return run;
   }
 

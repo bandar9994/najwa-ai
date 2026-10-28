@@ -202,6 +202,14 @@ function isStreaming(chat) {
   return false;
 }
 
+// This device, as the replies it writes name it (see src/lease.js). The id is
+// the one the device keeps for good (the computer's or the phone's own).
+const myDeviceId = () => (S.info && S.info.deviceId) || S.state.deviceId;
+const myDeviceName = () => (S.info && S.info.deviceName) || 'this device';
+
+// A reply being written in the chat by another device, if there is one.
+const replyElsewhere = (chat) => Lease.foreignInChat(chat, myDeviceId());
+
 // ---------------------------------------------------------------------------
 // modal helpers
 
@@ -798,6 +806,8 @@ function fillContent(container, msg) {
       container.append(h('div', { class: 'waiting', text: `Waiting for ${displayModel(msg.model.model)} to start. Large models can take a minute to load the first time.` }));
     }
   }
+  // Being written by another device: say where, instead of showing a reply that looks stuck.
+  if (Lease.foreignReply(msg, myDeviceId())) container.append(h('div', { class: 'replying-on', text: Lease.text('replyingOn', msg.owner.name) }));
 }
 
 // ---- Hermes Agent: live tool steps and approvals ------------------------------
@@ -1427,18 +1437,25 @@ function voiceReplyUpdated(msg) {
 // ---------------------------------------------------------------------------
 // actions
 
-// Read a chat from storage into the cache.
-async function loadChat(id) {
+// Read a chat from storage (not into the cache).
+async function readChat(id) {
   const chat = await api.chats.get(id);
   if (!chat) return null;
-  // A reply that was cut off when the app closed.
+  // A reply that was cut off when the app closed. One that another device is
+  // still writing (its lease is live, see src/lease.js) is left as it is: it
+  // shows "Replying on …" and arrives by sync. Replies without an owner (from
+  // before owners existed) are always cut off, as they were.
+  const now = Date.now();
   for (const m of chat.messages) {
-    if (m.pending) {
-      m.pending = false;
-      if (!m.content) m.error = 'This reply was interrupted.';
-    }
+    if (m.pending && !Lease.foreignReply(m, myDeviceId(), now)) Lease.interrupt(m);
   }
-  S.cache.set(id, chat);
+  return chat;
+}
+
+// Read a chat from storage into the cache.
+async function loadChat(id) {
+  const chat = await readChat(id);
+  if (chat) S.cache.set(id, chat);
   return chat;
 }
 
@@ -1840,6 +1857,12 @@ async function send() {
   const images = pictures.slice();
   if (!text && !images.length) return;
   dropDictation();
+  // Another device is writing a reply here: wait for it (the text stays in the box).
+  const elsewhere = replyElsewhere(S.current);
+  if (elsewhere) {
+    toast(Lease.text('busyElsewhere', elsewhere.owner.name));
+    return;
+  }
   // A reply is still coming: the model reads this mid-way if it can,
   // otherwise it waits and goes when the reply is done.
   if (isStreaming(S.current)) {
@@ -1888,7 +1911,15 @@ async function runCompletion(chat) {
     return;
   }
   useModel(chat, model);
-  const msg = { id: uid(), role: 'assistant', content: '', createdAt: Date.now(), model, pending: true };
+  // One reply at a time per chat: not while another device is writing one.
+  const there = replyElsewhere(chat);
+  if (there) {
+    toast(Lease.text('busyElsewhere', there.owner.name));
+    return;
+  }
+  // The reply names this device as its owner while it is written (a lease the
+  // heartbeat below keeps fresh), so other devices don't treat it as cut off.
+  const msg = { id: uid(), role: 'assistant', content: '', createdAt: Date.now(), model, pending: true, owner: Lease.newOwner(myDeviceId(), myDeviceName()) };
   const upto = chat.messages.length;
   const asker = chat.messages[upto - 1];
   chat.messages.push(msg);
@@ -1903,6 +1934,14 @@ async function runCompletion(chat) {
   const requestId = uid();
   const request = { chat, msg };
   S.requests.set(requestId, request);
+  const beat = setInterval(() => {
+    if (!msg.pending || !S.requests.has(requestId)) {
+      clearInterval(beat);
+      return;
+    }
+    Lease.touch(msg);
+    saveChatSoon(chat, 500);
+  }, Lease.HEARTBEAT_MS);
   updateComposer();
   renderSidebar();
 
@@ -1936,11 +1975,28 @@ async function runCompletion(chat) {
     // Connectors (Settings → Connectors) where the reply is written: this
     // device's, or a computer's when its models are used.
     connectors: usesTools(model),
-    chatId: chat.id
+    chatId: chat.id,
+    // For a computer's models: this reply's message, so the computer keeps its own copy.
+    replyId: msg.id,
+    replyAt: msg.createdAt,
+    replyModel: model
   });
 
   S.requests.delete(requestId);
+  clearInterval(beat);
   clearTimeout(waitTimer);
+  // The computer refused: another reply is being written in this chat. Take
+  // this one out again instead of leaving an error under the message.
+  if (!res.ok && res.code === 'busy') {
+    const at = chat.messages.indexOf(msg);
+    if (at >= 0) chat.messages.splice(at, 1);
+    if (V.reading && V.reading.msg === msg) stopReading();
+    toast(Lease.text('busy'), 6000);
+    await saveChatNow(chat);
+    if (S.current === chat) renderChat();
+    updateComposer();
+    return;
+  }
   // On a computer, "finished" can arrive before the last bits of text (they
   // travel separately): add any ending that hasn't arrived from the full reply.
   if (res.ok && !res.aborted && typeof res.text === 'string' && res.text.length > msg.content.length && res.text.startsWith(msg.content)) {
@@ -1948,6 +2004,7 @@ async function runCompletion(chat) {
     voiceReplyUpdated(msg);
   }
   msg.pending = false;
+  delete msg.owner;
   for (const a of msg.approvals || []) if (a.state === 'pending' || a.state === 'sending') a.state = 'expired';
   for (const t of msg.tools || []) if (t.status === 'running') t.status = res.ok && !res.aborted ? 'completed' : 'stopped';
   settleSteers(chat, msg, res);
@@ -2152,20 +2209,69 @@ async function onSyncEvent(evt) {
     if (S.current && S.current.id === id) newChat();
   }
   for (const id of evt.chats) {
+    // A reply being written here is this device's own: never replaced by what
+    // another device has (it syncs when it's done).
     const cached = S.cache.get(id);
     if (cached && isStreaming(cached)) continue;
-    S.cache.delete(id);
     if (S.current && S.current.id === id) {
-      const stick = nearBottom();
-      const chat = await loadChat(id);
-      if (chat) {
-        S.current = chat;
-        renderChat();
-        if (stick) scrollToBottom();
-      }
+      const fresh = await readChat(id);
+      // (Things may have changed while it was read.)
+      if (!S.current || S.current.id !== id || isStreaming(S.current)) continue;
+      if (fresh) adoptOpenChat(fresh);
+      else S.cache.delete(id);
+    } else {
+      S.cache.delete(id);
     }
   }
   await refreshList();
+}
+
+// The open chat changed on another device: show the new version. When it has
+// the same messages (for example another device is writing a reply, and its
+// text has grown) only the messages that changed are redrawn, in place, so the
+// reader keeps their place, their selection and the sections they opened.
+function adoptOpenChat(fresh) {
+  const old = S.current;
+  const stick = nearBottom();
+  const sameMessages = old.messages.length === fresh.messages.length && old.messages.every((m, i) => m.id === fresh.messages[i].id);
+  const aboutChat = (c) => JSON.stringify({ ...c, messages: null, rev: null, modifiedAt: null, updatedAt: null });
+  const sameChat = aboutChat(old) === aboutChat(fresh);
+  old.messages.forEach((m) => {
+    const mine = fresh.messages.find((x) => x.id === m.id);
+    if (mine && thinkingOpen.has(m)) thinkingOpen.set(mine, thinkingOpen.get(m));
+  });
+  S.cache.set(fresh.id, fresh);
+  S.current = fresh;
+  if (!sameMessages || !sameChat) {
+    renderChat();
+  } else {
+    fresh.messages.forEach((m, i) => {
+      const before = old.messages[i];
+      if (JSON.stringify(m) === JSON.stringify(before)) return;
+      const node = el.messages.querySelector(`.msg[data-id="${m.id}"]`);
+      if (!node) return;
+      const onlyText = m.pending && before.pending && JSON.stringify({ ...m, content: null, owner: null }) === JSON.stringify({ ...before, content: null, owner: null });
+      if (onlyText) fillContent(node.querySelector('.content'), m);
+      else node.replaceWith(renderMessage(fresh, m, i));
+    });
+    updateComposer();
+  }
+  if (stick) scrollToBottom();
+}
+
+// A reply that another device was writing, and that has been quiet for longer
+// than its lease: that device has stopped (closed, asleep, offline), so the
+// reply counts as cut off, like one that was cut off here.
+function expireLeases() {
+  const chat = S.current;
+  if (!chat || isStreaming(chat)) return;
+  const now = Date.now();
+  chat.messages.forEach((m, i) => {
+    if (!m.pending || !m.owner || m.owner.deviceId === myDeviceId() || Lease.leaseLive(m.owner, now)) return;
+    Lease.interrupt(m);
+    const node = el.messages.querySelector(`.msg[data-id="${m.id}"]`);
+    if (node) node.replaceWith(renderMessage(chat, m, i));
+  });
 }
 
 function syncView(onCleanup, field) {
@@ -3265,6 +3371,7 @@ function bindEvents() {
   if (api.sync) {
     api.sync.onEvent(onSyncEvent);
     setInterval(renderSyncBadge, 30 * 1000);
+    setInterval(expireLeases, 10 * 1000);
   }
 }
 

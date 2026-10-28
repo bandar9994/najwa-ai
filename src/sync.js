@@ -23,6 +23,8 @@
 
 'use strict';
 
+const Lease = require('./lease');
+
 const FORMAT = 1;
 const META_FILE = 'balimda-sync.json';
 const INDEX_FILE = 'index.enc';
@@ -641,11 +643,42 @@ const msgKey = (m) => m.id || `${m.role}|${m.createdAt}|${String(m.content || ''
 
 // How finished a copy of a message is: a reply still being written (or cut
 // off) on one device mustn't replace the finished reply from the other.
-const doneness = (m) => (m.pending ? 0 : !m.content && m.error ? 1 : 2);
+//   3 finished   2 still being written by a device whose lease is live
+//   1 cut off    0 pending with no live owner
+// A reply that is no longer pending but still has its owner was cut off by a
+// version of the app that doesn't know about owners (they are dropped when a
+// reply ends). Chats from before reply ownership have no owner and no
+// `interrupted` flag, so they only ever rank 3, 1 or 0, in the order they
+// always had.
+const doneness = (m, now) => (m.pending
+  ? (Lease.liveReply(m, now) ? 2 : 0)
+  : m.interrupted || m.owner || (!m.content && m.error) ? 1 : 3);
+
+// Of two copies of the same message, the one to keep. `a` is the copy from
+// the newer chat, which stays unless `b` is clearly the better one.
+function betterCopy(a, b, now) {
+  const da = doneness(a, now);
+  const db = doneness(b, now);
+  if (da !== db) return db > da ? b : a;
+  if (da === 3) {
+    // The computer's record of a reply written for the phone has the text only;
+    // the phone's own finished copy (steps, pictures, stats) is the fuller one.
+    if (a.mirrored !== b.mirrored) return a.mirrored ? b : a;
+    return a;
+  }
+  if (da === 2) {
+    // Both still being written: the owner's latest word wins.
+    const ta = (a.owner && a.owner.ts) || 0;
+    const tb = (b.owner && b.owner.ts) || 0;
+    if (ta !== tb) return tb > ta ? b : a;
+    return String(b.content || '').length > String(a.content || '').length ? b : a;
+  }
+  return a;
+}
 
 // The same chat changed on two devices before they synced: keep the newer
 // version and add any messages only the other one has, so nothing is lost.
-function mergeChats(a, b) {
+function mergeChats(a, b, { now = Date.now() } = {}) {
   const [newer, older] = (a.modifiedAt || 0) >= (b.modifiedAt || 0) ? [a, b] : [b, a];
   const seen = new Set(newer.messages.map(msgKey));
   const extra = older.messages.filter((m) => !seen.has(msgKey(m)));
@@ -653,7 +686,7 @@ function mergeChats(a, b) {
   const olderById = new Map(older.messages.filter((m) => m.id).map((m) => [m.id, m]));
   merged.messages = merged.messages.map((m) => {
     const other = m.id && olderById.get(m.id);
-    return other && doneness(other) > doneness(m) ? structuredClone(other) : m;
+    return other && betterCopy(m, other, now) === other ? structuredClone(other) : m;
   });
   if (extra.length) {
     merged.messages = [...merged.messages, ...structuredClone(extra)]
@@ -714,8 +747,11 @@ class Sync {
    *                      signIn() -> { account, secret }   (interactive)
    *                      accessToken(secret, { force }) -> string
    *                      signOut(secret, account)
-   * @param onEvent     receives { type: 'status', status } and
-   *                    { type: 'changed', chats, deleted, settings }
+   * @param onEvent     receives { type: 'status', status },
+   *                    { type: 'changed', chats, deleted, settings } (what
+   *                    this device took from the synced copy) and
+   *                    { type: 'pushed', chats, deleted, settings } (what it
+   *                    just put there)
    * @param auto        sync by itself a few seconds after local changes
    */
   constructor({ storage, device = 'device', secrets = {}, fetch, googleAuth = null, onEvent = () => {}, auto = true }) {
@@ -891,9 +927,15 @@ class Sync {
   // a streaming reply turns into one upload instead of dozens.
   soon() {
     if (!this.config) return;
+    const due = Date.now() + Math.max(4000, this.lastPush + 20000 - Date.now());
+    // Keep a wait that is already running: a reply being written changes the
+    // chat every few seconds, and starting the wait over each time would put
+    // the upload off until the reply is done (so another device couldn't
+    // watch it, nor see that it is still being written).
+    if (this.timer && this.timerDue <= due) return;
     clearTimeout(this.timer);
-    const wait = Math.max(4000, this.lastPush + 20000 - Date.now());
-    this.timer = setTimeout(() => this.run(), wait);
+    this.timerDue = due;
+    this.timer = setTimeout(() => this.run(), due - Date.now());
     if (this.timer && this.timer.unref) this.timer.unref();
   }
 
@@ -1122,6 +1164,9 @@ class Sync {
         message: `Sync from ${this.device}`
       });
       this.lastPush = Date.now();
+      // For the phone watching this computer (see "watch" in src/reply-hub.js):
+      // what it would find by syncing now.
+      this.onEvent({ type: 'pushed', chats: writes.map((w) => w.id), deleted: deletes.map((d) => d.id), settings: !!sharedWrite });
     }
 
     // What is now in the synced copy. A chat saved on this device while this

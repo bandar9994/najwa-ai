@@ -268,7 +268,16 @@ function remoteComputers({ getKey, getComputers, fetch = globalThis.fetch, probe
       started = true;
       onDelta(evt.text);
     };
-    const send = (u) => call(u, 'chat', { provider: target.provider, req: { ...req, model: target.model }, job, from: got }, { signal, onEvent });
+    // Which chat, device and message this is for: the computer refuses a
+    // second reply in the same chat, and keeps its own copy of this reply
+    // (see reply-hub.js). Older computers ignore all of it.
+    const { device, reply, ...plain } = req;
+    const about = {
+      ...(req.chatId ? { chatId: String(req.chatId) } : {}),
+      ...(device && device.id ? { deviceId: String(device.id), deviceName: String(device.name || '') } : {}),
+      ...(reply && reply.id ? { reply } : {})
+    };
+    const send = (u) => call(u, 'chat', { provider: target.provider, req: { ...plain, model: target.model }, job, from: got, ...about }, { signal, onEvent });
     // Stop: the computer stops writing too (it would otherwise wait a few
     // minutes for the phone to come back).
     const cancel = () => {
@@ -351,7 +360,48 @@ function remoteComputers({ getKey, getComputers, fetch = globalThis.fetch, probe
     return call(await locate(computer), 'approve', { provider: null, payload }, { timeoutMs: 15000 });
   }
 
-  return { listModels, streamChat, approve, answerOn, locate, call };
+  // Stays connected to every computer that shares its models and calls
+  // onChanged({ chats, deleted, settings }) whenever one has put new data in
+  // the synced copy, so the phone can sync right away. Runs until `signal`
+  // aborts; reconnects by itself (slowing down while a computer can't be
+  // reached) and leaves a computer alone that doesn't know "watch" (older
+  // versions of the desktop app).
+  async function watch({ onChanged, signal, deviceId, pauseMs = 2000, maxPauseMs = 60000 }) {
+    let list;
+    try {
+      list = await computers();
+    } catch {
+      return;
+    }
+    const one = async (computer) => {
+      let wait = pauseMs;
+      while (!signal.aborted) {
+        let up = false;
+        try {
+          const url = await locate(computer);
+          await call(url, 'watch', { deviceId }, {
+            signal,
+            onEvent: (evt) => {
+              up = true;
+              if (evt.t === 'changed') onChanged({ chats: evt.chats || [], deleted: evt.deleted || [], settings: !!evt.settings, computer: computer.id });
+            }
+          });
+        } catch (err) {
+          if (signal.aborted) return;
+          if (err.message === 'error 400') return;  // an older computer: no push, the phone polls
+        }
+        wait = up ? pauseMs : Math.min(wait * 2, maxPauseMs);
+        try {
+          await pause(wait, signal);
+        } catch {
+          return;
+        }
+      }
+    };
+    await Promise.all(list.map(one));
+  }
+
+  return { listModels, streamChat, approve, answerOn, locate, call, watch };
 }
 
 module.exports = { PORT, PATH, MAX_SKEW_MS, RemoteError, linkKey, lock, unlock, lines, remoteComputers, modelName };

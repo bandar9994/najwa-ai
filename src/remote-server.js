@@ -240,7 +240,7 @@ function startRemoteServer({ getKey, handlers, port = PORT, host = '0.0.0.0', he
       await write({ t: 'done', result: result === undefined ? null : result });
     } catch (err) {
       emit.flush();
-      await write({ t: 'error', message: err.message || String(err) });
+      await write({ t: 'error', message: err.message || String(err), ...(err.code === 'busy' ? { code: 'busy' } : {}) });
     } finally {
       clearInterval(beat);
     }
@@ -317,7 +317,7 @@ function startRemoteServer({ getKey, handlers, port = PORT, host = '0.0.0.0', he
         push({ t: 'done', result: result === undefined ? null : result });
       } catch (err) {
         emit.flush();
-        push({ t: 'error', message: err.message || String(err) });
+        push({ t: 'error', message: err.message || String(err), ...(err.code === 'busy' ? { code: 'busy' } : {}) });
       }
     })();
     return job;

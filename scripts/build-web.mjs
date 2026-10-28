@@ -27,6 +27,7 @@ await Promise.all([
   fs.copyFile(r('renderer/store-flags.js'), path.join(out, 'store-flags.js')),
   fs.copyFile(r('renderer/speech-text.js'), path.join(out, 'speech-text.js')),
   fs.copyFile(r('renderer/save-queue.js'), path.join(out, 'save-queue.js')),
+  fs.copyFile(r('src/lease.js'), path.join(out, 'lease.js')),
   fs.copyFile(r('renderer/styles.css'), path.join(out, 'styles.css')),
   fs.copyFile(r('renderer/fonts/Almarai-Regular.woff2'), path.join(out, 'fonts/Almarai-Regular.woff2')),
   fs.copyFile(r('renderer/fonts/Almarai-Bold.woff2'), path.join(out, 'fonts/Almarai-Bold.woff2')),
@@ -78,6 +79,7 @@ replace(/content="default-src[^"]*"/.exec(html)[0], `content="${csp}"`);
 replace('content="width=device-width, initial-scale=1"', 'content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content"');
 replace('../node_modules/marked/lib/marked.umd.js', 'vendor/marked.umd.js');
 replace('../node_modules/dompurify/dist/purify.min.js', 'vendor/purify.min.js');
+replace('../src/lease.js', 'lease.js');
 replace('<script src="app.js"></script>', '<script src="bridge.js"></script>\n  <script src="app.js"></script>');
 replace('<title>Najwa AI</title>', '<title>Najwa AI</title>\n  <meta name="theme-color" content="#5b5bd6" />\n  <link rel="icon" href="icon.png" />');
 await fs.writeFile(path.join(out, 'index.html'), html);

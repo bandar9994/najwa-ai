@@ -686,3 +686,35 @@ test('mergeMemory keeps additions and applies removals from both sides', () => {
   // Arabic and free text.
   assert.strictEqual(mergeMemory('يسكن في الرياض', 'يسكن في جدة', 'يسكن في الرياض\nيحب القهوة'), 'يسكن في جدة\nيحب القهوة');
 });
+
+test('a device says what it pushed, and soon() keeps the wait it already has', async () => {
+  const backend = BACKENDS.github();
+  const pc = await device(backend, 'pc');
+  const chat = await pc.storage.createChat({ title: 'Trip' });
+  await addMessage(pc.storage, chat.id, 'Plan a trip');
+  const pushed = [];
+  const original = pc.sync.onEvent;
+  pc.sync.onEvent = (e) => {
+    if (e.type === 'pushed') pushed.push(e);
+    original(e);
+  };
+  await pc.connect();
+  assert.deepStrictEqual(pushed.at(-1).chats, [chat.id]);
+  assert.deepStrictEqual(pushed.at(-1).deleted, []);
+  const count = pushed.length;
+  await pc.sync.run();
+  assert.strictEqual(pushed.length, count, 'nothing pushed, nothing announced');
+
+  // A reply being written changes the chat every few seconds: the wait must not start over each time.
+  pc.sync.soon();
+  const timer = pc.sync.timer;
+  const due = pc.sync.timerDue;
+  assert.ok(timer);
+  await new Promise((r) => setTimeout(r, 20));
+  pc.sync.soon();
+  assert.strictEqual(pc.sync.timer, timer);
+  assert.strictEqual(pc.sync.timerDue, due);
+  pc.sync.stop && pc.sync.stop();
+  clearTimeout(pc.sync.timer);
+  pc.sync.timer = null;
+});
