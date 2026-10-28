@@ -227,6 +227,12 @@ const myDeviceName = () => (S.info && S.info.deviceName) || 'this device';
 // still being written is up to its lease (src/lease.js), so it can't stay.
 const replyElsewhere = (chat) => (isStreaming(chat) ? null : Lease.replyInProgress(chat));
 
+// Which device actually generates a reply, not which one asked for it (see
+// Lease.runningOn): a phone's reply written by a computer has the phone as
+// owner, but it runs on the computer.
+const replyHost = (msg) => Lease.runningOn(msg, { deviceId: myDeviceId(), name: myDeviceName(), computers: S.settings && S.settings.computers });
+const replyLabel = (msg) => Lease.replyingLabel(msg, { deviceId: myDeviceId(), name: myDeviceName(), computers: S.settings && S.settings.computers });
+
 // Does this window itself run the reply (a request of its own is open)?
 function runsHere(msg) {
   for (const r of S.requests.values()) if (r.msg === msg) return true;
@@ -236,7 +242,7 @@ function runsHere(msg) {
 // Stop for a reply this window doesn't run: only a computer can, for a reply a
 // phone asked it for (it holds the job). Everything else is stopped on the
 // device that runs it.
-const canStopElsewhere = (msg) => !!msg && typeof api.ai.stopElsewhere === 'function' && msg.owner.deviceId !== myDeviceId();
+const canStopElsewhere = (msg) => !!msg && typeof api.ai.stopElsewhere === 'function' && msg.owner.deviceId !== myDeviceId() && replyHost(msg).here;
 
 // ---------------------------------------------------------------------------
 // modal helpers
@@ -840,7 +846,7 @@ function fillContent(container, msg) {
   if (Lease.isReplyInProgress(msg) && !runsHere(msg)) {
     container.append(h('div', { class: 'replying-on', role: 'status' },
       h('span', { class: 'busy-spin', 'aria-hidden': 'true' }),
-      h('span', { dir: 'auto', text: Lease.text('replyingOn', msg.owner.name) })));
+      h('span', { dir: 'auto', text: replyLabel(msg) })));
   }
 }
 
@@ -1067,7 +1073,7 @@ function updateComposer() {
   } else if (S.current && replyElsewhere(S.current)) {
     const there = replyElsewhere(S.current);
     el.hint.classList.add('model-note');
-    el.hint.textContent = canStopElsewhere(there) ? Lease.text('replyingOn', there.owner.name) : `${Lease.text('replyingOn', there.owner.name)} ${Lease.text('stopThere', there.owner.name)}`;
+    el.hint.textContent = canStopElsewhere(there) ? replyLabel(there) : `${replyLabel(there)} ${Lease.text('stopThere', replyHost(there).name)}`;
   } else if (note) el.hint.textContent = note;
   else if (S.info.mobile) el.hint.textContent = S.sync && S.sync.configured ? 'Every chat is saved on this phone and synced' : 'Every chat is saved on this phone';
   else {
@@ -1085,10 +1091,10 @@ function updateSendButton() {
   const canStop = !!there && canStopElsewhere(there);
   const busy = streaming || !!there;
   el.stopBtn.hidden = !(streaming || canStop);
-  el.stopBtn.title = streaming ? 'Stop the reply' : `Stop the reply (on ${there && there.owner.name})`;
+  el.stopBtn.title = streaming ? 'Stop the reply' : `Stop the reply (on ${there && replyHost(there).name})`;
   // A reply that can't be stopped from here still shows the window is busy.
   el.busyDot.hidden = !(there && !canStop);
-  if (there) el.busyDot.title = Lease.text('replyingOn', there.owner.name);
+  if (there) el.busyDot.title = replyLabel(there);
   el.composerBox.classList.toggle('busy', busy);
   el.sendBtn.hidden = busy && !el.input.value.trim() && !pictures.length;
   el.sendBtn.title = busy ? 'Send (goes after this reply, or the reply reads it)' : 'Send';
@@ -2129,7 +2135,7 @@ async function runCompletion(chat, entry) {
   const there = replyElsewhere(chat);
   if (there) {
     acceptQueued(chat, entry);
-    toast(Lease.text('busyElsewhere', there.owner.name));
+    toast(Lease.text('busyElsewhere', replyHost(there).name));
     return;
   }
   // The reply names this device as its owner while it is written (a lease the
@@ -2318,8 +2324,8 @@ function stopCurrent() {
   if (!there || !canStopElsewhere(there)) return;
   const chat = S.current;
   api.ai.stopElsewhere(chat.id).then((n) => {
-    if (!n) toast(Lease.text('stopFailed', there.owner.name), 6000);
-  }).catch(() => toast(Lease.text('stopFailed', there.owner.name), 6000));
+    if (!n) toast(Lease.text('stopFailed', replyHost(there).name), 6000);
+  }).catch(() => toast(Lease.text('stopFailed', replyHost(there).name), 6000));
 }
 
 async function regenerate(chat) {
@@ -2334,7 +2340,7 @@ async function regenerate(chat) {
   // Check before the old reply is taken out, so a refusal leaves it in place.
   const there = replyElsewhere(chat);
   if (there) {
-    toast(Lease.text('busyElsewhere', there.owner.name));
+    toast(Lease.text('busyElsewhere', replyHost(there).name));
     return;
   }
   const last = chat.messages[chat.messages.length - 1];

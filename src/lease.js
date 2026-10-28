@@ -71,11 +71,57 @@
   // The first chat in a list with a reply being written on another device.
   const foreignInChat = (chat, deviceId, now = Date.now()) => (chat && chat.messages || []).find((m) => foreignReply(m, deviceId, now)) || null;
 
+  // Which device is actually generating a reply. The owner is the device that
+  // holds the lease, and that is the device that asked: a computer writing a
+  // reply for a phone keeps the phone as owner (see reply-hub.js), so the
+  // owner alone would say the phone is writing a reply the computer writes.
+  // The reply's model says where it runs when it is a computer's model
+  // ("name (Computer, Label)"). Nothing is stored for this: it is worked out
+  // when the line is drawn, from what every device already has.
+  //
+  //   me = { deviceId, name, computers }  this device; computers = settings.computers
+  //
+  // Returns { name, here, askedFrom }: the device that runs it, whether that is
+  // this device, and (when it is this device but another one asked) who asked.
+  function runningOn(msg, me = {}) {
+    const owner = (msg && msg.owner) || {};
+    const model = msg && msg.model && msg.model.provider === 'computer' && typeof msg.model.model === 'string' ? msg.model.model : '';
+    let host = null;
+    if (model) {
+      const known = Object.entries(me.computers || {})
+        .filter(([, c]) => c && typeof c.name === 'string' && c.name)
+        .sort((a, b) => b[1].name.length - a[1].name.length)
+        .find(([, c]) => model.includes(` (${c.name},`) || model.endsWith(` (${c.name})`));
+      if (known) host = { id: known[0], name: known[1].name };
+      else {
+        const m = /\(([^(),]+)(?:,[^()]*)?\)$/.exec(model);
+        if (m && m[1].trim()) host = { id: null, name: m[1].trim() };
+      }
+    }
+    if (!host) {
+      const here = !!owner.deviceId && owner.deviceId === me.deviceId;
+      return { name: owner.name || 'another device', here, askedFrom: null };
+    }
+    const here = (!!host.id && host.id === me.deviceId) || (!!me.name && host.name === me.name);
+    const asked = here && owner.deviceId && owner.deviceId !== me.deviceId ? (owner.name || null) : null;
+    return { name: here ? (me.name || host.name) : host.name, here, askedFrom: asked };
+  }
+
+  // "Replying on <device>…", or just "Replying…" when this device writes it.
+  function replyingLabel(msg, me = {}, lang = language()) {
+    const r = runningOn(msg, me);
+    if (!r.here) return text('replyingOn', r.name, lang);
+    const base = text('replyingHere', null, lang);
+    return r.askedFrom ? `${base} ${text('askedFrom', r.askedFrom, lang)}` : base;
+  }
+
   // What the app says about it, in English and Arabic (the app's own text is
   // English; these two are shown in Arabic when the device is set to Arabic).
   const STRINGS = {
     en: {
       replyingOn: (name) => `Replying on ${name}…`,
+      replyingHere: () => 'Replying…',
+      askedFrom: (name) => `· asked from ${name}`,
       busyElsewhere: (name) => `A reply is already being written in this chat (on ${name}). Wait for it to finish, or stop it there first.`,
       stopThere: (name) => `It is running on ${name}: stop it there.`,
       stopFailed: (name) => `Couldn't stop it from here: the reply is running on ${name}. Stop it there.`,
@@ -85,6 +131,8 @@
     },
     ar: {
       replyingOn: (name) => `جارٍ الرد على ${name}…`,
+      replyingHere: () => 'جارٍ الرد…',
+      askedFrom: (name) => `· طُلب من ${name}`,
       busyElsewhere: (name) => `يُكتب ردٌّ في هذه المحادثة الآن (على ${name}). انتظر حتى ينتهي، أو أوقفه هناك أولاً.`,
       stopThere: (name) => `يعمل على ${name}: أوقفه هناك.`,
       stopFailed: (name) => `تعذّر الإيقاف من هنا: الردّ يعمل على ${name}. أوقفه هناك.`,
@@ -96,7 +144,7 @@
   const language = () => (typeof navigator !== 'undefined' && /^ar/i.test(navigator.language || '') ? 'ar' : 'en');
   const text = (key, name, lang = language()) => (STRINGS[lang] || STRINGS.en)[key](name || 'another device');
 
-  const api = { text, STRINGS, LEASE_MS, HEARTBEAT_MS, SKEW_MS, leaseLive, liveReply, isReplyInProgress, replyInProgress, foreignReply, foreignInChat, newOwner, touch, interrupt };
+  const api = { text, runningOn, replyingLabel, STRINGS, LEASE_MS, HEARTBEAT_MS, SKEW_MS, leaseLive, liveReply, isReplyInProgress, replyInProgress, foreignReply, foreignInChat, newOwner, touch, interrupt };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Lease = api;
 })(typeof window !== 'undefined' ? window : globalThis);
