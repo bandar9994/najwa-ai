@@ -11,6 +11,7 @@ const { PROVIDERS, normalizeMessages } = require('./src/providers');
 const { Sync } = require('./src/sync');
 const { createReplyHub } = require('./src/reply-hub');
 const Lease = require('./src/lease');
+const { isAllowedExternal } = require('./renderer/report');
 const { desktopGoogleAuth } = require('./src/google-auth-desktop');
 const { linkKey } = require('./src/remote');
 const { startRemoteServer, localAddresses } = require('./src/remote-server');
@@ -195,15 +196,16 @@ async function createWindow() {
   // Pick up what you did on your phone as soon as you come back to the PC.
   mainWindow.on('focus', () => sync.run());
 
-  // Open links in the user's browser, never inside the app.
+  // Open links in the user's browser, never inside the app. Web pages, and the
+  // report email (mailto to the support address only; see renderer/report.js).
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:\/\//.test(url)) shell.openExternal(url);
+    if (isAllowedExternal(url)) shell.openExternal(url);
     return { action: 'deny' };
   });
   mainWindow.webContents.on('will-navigate', (e, url) => {
     if (url !== mainWindow.webContents.getURL()) {
       e.preventDefault();
-      if (/^https?:\/\//.test(url)) shell.openExternal(url);
+      if (isAllowedExternal(url)) shell.openExternal(url);
     }
   });
 }

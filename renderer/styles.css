@@ -767,3 +767,23 @@ textarea.input { resize: vertical; }
 .approval-done .approval-label { white-space: nowrap; flex-shrink: 0; }
 .approval-done code { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .approval-done.denied { color: var(--danger); }
+
+/* ---------- report a reply ---------- */
+
+.msg .actions button:disabled { cursor: default; opacity: 0.7; }
+.msg .actions button:disabled:hover { background: transparent; color: var(--text-dim); }
+.msg .meta .reported-tag {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 7px;
+  font-size: 11px;
+  line-height: 18px;
+}
+.report-form .help { margin: 0 0 12px; }
+.report-reasons { border: 0; margin: 0 0 10px; padding: 0; min-width: 0; }
+.report-reasons legend { font-size: 13px; font-weight: 600; padding: 0; margin-bottom: 4px; }
+.report-reason { display: flex; align-items: center; gap: 10px; min-height: 36px; cursor: pointer; }
+.report-reason input { margin: 0; flex: none; }
+.report-form .error { margin: 0 0 10px; }
+.report-form textarea { width: 100%; box-sizing: border-box; resize: vertical; }
+.report-form label[for] { display: block; font-size: 13px; margin-bottom: 4px; }

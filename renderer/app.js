@@ -247,18 +247,36 @@ const canStopElsewhere = (msg) => !!msg && typeof api.ai.stopElsewhere === 'func
 // ---------------------------------------------------------------------------
 // modal helpers
 
-function openModal({ title, body, buttons = [], wide = false, onClose }) {
+let modalSeq = 0;
+const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+
+// `dir` and `closeLabel` are for a dialog in another language (Arabic: 'rtl').
+function openModal({ title, body, buttons = [], wide = false, onClose, dir, closeLabel = 'Close' }) {
+  const opener = document.activeElement;
   const close = () => {
     backdrop.remove();
     document.removeEventListener('keydown', onKey, true);
+    // Back to the button that opened it (not to a text box: that would raise the keyboard).
+    if (opener && opener.isConnected && /^(BUTTON|A)$/.test(opener.tagName)) opener.focus();
     if (onClose) onClose();
   };
   const onKey = (e) => {
-    if (e.key === 'Escape' && el.modalRoot.lastElementChild === backdrop) {
+    if (el.modalRoot.lastElementChild !== backdrop) return;
+    if (e.key === 'Escape') {
       e.stopPropagation();
       close();
+    } else if (e.key === 'Tab') {
+      // Keep Tab inside the dialog.
+      const items = [...modal.querySelectorAll(FOCUSABLE)].filter((n) => !n.disabled && !n.hidden && n.offsetParent !== null);
+      if (!items.length) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (!modal.contains(document.activeElement)) { e.preventDefault(); first.focus(); }
+      else if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
     }
   };
+  const titleId = `modal-title-${++modalSeq}`;
   const foot = buttons.length
     ? h('div', { class: 'modal-foot' }, buttons.map((b) =>
       h('button', {
@@ -270,10 +288,10 @@ function openModal({ title, body, buttons = [], wide = false, onClose }) {
         }
       })))
     : null;
-  const modal = h('div', { class: `modal ${wide ? 'wide' : ''}`, role: 'dialog' },
+  const modal = h('div', { class: `modal ${wide ? 'wide' : ''}`, role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId, dir },
     h('div', { class: 'modal-head' },
-      h('h3', { text: title }),
-      h('button', { class: 'icon-btn', title: 'Close', text: '✕', onclick: close })),
+      h('h3', { id: titleId, text: title }),
+      h('button', { class: 'icon-btn', title: closeLabel, 'aria-label': closeLabel, text: '✕', onclick: close })),
     h('div', { class: 'modal-body' }, body),
     foot);
   const backdrop = h('div', { class: 'modal-backdrop', onmousedown: (e) => { if (e.target === backdrop) close(); } }, modal);
@@ -281,6 +299,7 @@ function openModal({ title, body, buttons = [], wide = false, onClose }) {
   document.addEventListener('keydown', onKey, true);
   const first = modal.querySelector('input, textarea, select');
   if (first) setTimeout(() => first.focus(), 0);
+  else setTimeout(() => { if (!modal.contains(document.activeElement)) (modal.querySelector('.modal-foot .btn') || modal).focus(); }, 0);
   return close;
 }
 
@@ -740,6 +759,14 @@ function renderMessage(chat, msg, index) {
     }
     const isLast = index === chat.messages.length - 1;
     if (isLast) actions.append(h('button', { text: 'Regenerate', onclick: () => regenerate(liveChat(chat)) }));
+    if (msg.content) {
+      actions.append(h('button', {
+        'data-report': msg.id,
+        text: Report.text('report'),
+        dir: Report.language() === 'ar' ? 'rtl' : null,
+        onclick: () => openReport(liveChat(chat), msg)
+      }));
+    }
     actions.append(h('button', { text: 'Delete', onclick: () => { const now = liveChat(chat); deleteMessage(now, liveMessage(now, msg)); } }));
   }
 
@@ -769,7 +796,86 @@ function renderMessage(chat, msg, index) {
       msg.error ? h('div', { class: 'error', text: msg.error }) : null,
       msg.notice ? h('div', { class: 'msg-notice', text: msg.notice }) : null,
       msg.pending ? null : actions));
+  if (!isUser && Report.isReported(S.state.reported, chat.id, msg.id)) showReported(node);
   return node;
+}
+
+// ---------------------------------------------------------------------------
+// Report a reply: a small form, then the user's own mail app opens with the report
+// ready to send. Nothing is sent by the app. That the reply was reported is kept
+// only in this device's state.json (never in the chat or in sync).
+
+// The "Reported" tag by the name and the changed action.
+function showReported(node) {
+  const btn = node.querySelector('[data-report]');
+  if (btn) {
+    btn.textContent = Report.text('reported');
+    btn.disabled = true;
+  }
+  const meta = node.querySelector('.meta');
+  if (meta && !meta.querySelector('.reported-tag')) {
+    meta.append(h('span', { class: 'reported-tag', dir: Report.language() === 'ar' ? 'rtl' : null, text: Report.text('reported') }));
+  }
+}
+
+// Same way as every other link: the app (or the phone) opens it outside, in the mail app.
+function openExternalLink(url) {
+  const a = h('a', { href: url, target: '_blank', rel: 'noopener noreferrer' });
+  a.style.display = 'none';
+  document.body.append(a);
+  a.click();
+  a.remove();
+}
+
+function openReport(chat, msg) {
+  const lang = Report.language();
+  const T = (key, arg) => Report.text(key, arg, lang);
+  const uid = `report-${++modalSeq}`;
+  let reason = '';
+  const problem = h('div', { class: 'error', role: 'alert', hidden: true });
+  const radios = Report.REASONS.map((r) => h('label', { class: 'report-reason' },
+    h('input', { type: 'radio', name: uid, value: r, onchange: () => { reason = r; problem.hidden = true; } }),
+    h('span', { text: T('reasonName', r) })));
+  const note = h('textarea', { class: 'input', id: `${uid}-note`, rows: 3, maxlength: 500, placeholder: T('notePlaceholder'), dir: 'auto' });
+  openModal({
+    title: T('reportTitle'),
+    dir: lang === 'ar' ? 'rtl' : 'ltr',
+    closeLabel: T('close'),
+    body: h('div', { class: 'report-form' },
+      h('p', { class: 'help', text: T('reportIntro') }),
+      h('fieldset', { class: 'report-reasons' }, h('legend', { text: T('reason') }), radios),
+      problem,
+      h('div', { class: 'field' }, h('label', { for: `${uid}-note`, text: T('note') }), note)),
+    buttons: [
+      { label: T('cancel') },
+      {
+        label: T('send'),
+        primary: true,
+        onClick: () => {
+          if (!reason) {
+            problem.textContent = T('pickReason');
+            problem.hidden = false;
+            radios[0].querySelector('input').focus();
+            return false;
+          }
+          const { url } = Report.buildMailto({
+            reason,
+            note: note.value,
+            model: msg.model && msg.model.model ? `${msg.model.provider ? `${msg.model.provider} / ` : ''}${displayModel(msg.model.model)}` : '',
+            version: S.info && S.info.version,
+            platform: S.info && S.info.platform,
+            reply: splitThinking(msg.content).answer
+          });
+          S.state.reported = Report.addReported(S.state.reported, chat.id, msg.id, reason);
+          api.state.save({ reported: S.state.reported });
+          const node = el.messages.querySelector(`.msg[data-id="${CSS.escape(msg.id)}"]`);
+          if (node) showReported(node);
+          openExternalLink(url);
+          toast(T('opened'), 7000);
+        }
+      }
+    ]
+  });
 }
 
 // "GPU…" while an on-device reply is being written.
@@ -1720,6 +1826,8 @@ async function deleteChat(id) {
   for (const [rid, r] of S.requests) if (r.chat === cached) api.ai.abort(rid);
   saveQueue.drop(id);
   dropQueue(id);
+  S.state.reported = Report.dropReported(S.state.reported, id);
+  api.state.save({ reported: S.state.reported });
   await api.chats.remove(id);
   S.cache.delete(id);
   if (S.current && S.current.id === id) newChat();
@@ -3147,6 +3255,8 @@ function openSettings(tab = 'general') {
           h('div', { class: 'field-row' },
             h('button', { class: 'btn', text: 'Read the license', onclick: () => showLegal('license', 'Najwa AI License') }),
             h('button', { class: 'btn', text: 'Open-source credits', onclick: () => showLegal('notices', 'Third-party notices') })))),
+        field(Report.text('privacy'), h('a', { class: 'btn', href: Report.PRIVACY_URL, target: '_blank', rel: 'noopener', dir: Report.language() === 'ar' ? 'rtl' : null, text: Report.text('privacyOpen') })),
+        field(Report.text('useTitle'), h('p', { class: 'help', dir: Report.language() === 'ar' ? 'rtl' : null, text: Report.text('useNote') })),
         field('Project', h('a', { href: PROJECT_URL, target: '_blank', rel: 'noopener', text: PROJECT_URL })),
         h('p', { class: 'help', text: 'Built with llama.cpp, wllama, Electron, Capacitor, marked and DOMPurify. AI models belong to their creators and have their own licenses.' })
       ];
@@ -3647,6 +3757,8 @@ async function init() {
   [S.settings, S.info, S.state, S.sync] = await Promise.all([
     api.settings.get(), api.app.info(), api.state.get(), api.sync ? api.sync.status() : null
   ]);
+  // Which replies were reported from this device (not synced).
+  S.state.reported = Report.readReported(S.state.reported);
   // Identifies this device in chats' per-device model choices (not synced).
   if (!S.state.deviceId) {
     S.state.deviceId = uid();
