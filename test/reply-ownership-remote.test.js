@@ -23,10 +23,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // A computer like the app's: handlers wired to a reply hub, a model that types
 // `words` slowly (and waits while `gate.hold` is set).
-async function computer(key, { newHandlers = true, words = ['Book', ' early', ' for', ' less.'], delay = 15 } = {}) {
+async function computer(key, { newHandlers = true, words = ['Book', ' early', ' for', ' less.'], delay = 15, serverOptions = {}, hubOptions = {} } = {}) {
   const storage = await Storage.open(nodeFsBackend(fs.mkdtempSync(path.join(os.tmpdir(), 'najwa-pc-'))));
   const log = { synced: 0, notified: [], started: 0 };
-  const hub = createReplyHub({ storage, name: () => 'Desk', notify: (ids) => log.notified.push(...ids), syncNow: () => { log.synced++; }, flushMs: 10, retryMs: 20, orphanMs: 2000 });
+  const hub = createReplyHub({ storage, name: () => 'Desk', notify: (ids) => log.notified.push(...ids), syncNow: () => { log.synced++; }, flushMs: 10, retryMs: 20, orphanMs: 2000, ...hubOptions });
   const run = (msg, { emit, signal }) => async (onDelta) => {
     log.started++;
     let text = '';
@@ -44,7 +44,7 @@ async function computer(key, { newHandlers = true, words = ['Book', ' early', ' 
     chat: async (msg, ctx) => hub.remoteChat(msg, ctx, run(msg, ctx))
   };
   if (newHandlers) handlers.watch = (msg, ctx) => hub.watch(msg, ctx);
-  const server = await startRemoteServer({ port: 0, host: '127.0.0.1', getKey: async () => linkKey(key), handlers });
+  const server = await startRemoteServer({ port: 0, host: '127.0.0.1', getKey: async () => linkKey(key), handlers, ...serverOptions });
   return { server, storage, hub, log, addr: { id: 'desk', name: 'Desk', addrs: ['127.0.0.1'], port: server.port, enabled: true } };
 }
 const phone = (key, pc) => remoteComputers({ getKey: async () => key, getComputers: async () => ({ desk: pc.addr }) });
@@ -173,6 +173,95 @@ test('an older phone (no chat, device or message ids) and an older computer (ign
     } finally {
       await bare.close();
     }
+  } finally {
+    await pc.server.close();
+  }
+});
+
+// What a phone sends for a reply the computer keeps (see remote.js streamChat).
+const chatCall = (id, reply, job) => ({
+  provider: 'ollama', req: { model: 'qwen', messages: [{ role: 'user', content: 'hi' }] }, job, from: 0,
+  chatId: id, deviceId: 'phone-1', deviceName: 'Pixel', reply: { id: reply, at: 1000 }
+});
+// Starts a reply and drops the connection after the first words.
+async function leave(p, pc, id, reply, job) {
+  const url = await p.locate(pc.addr);
+  const controller = new AbortController();
+  let got = '';
+  await p.call(url, 'chat', chatCall(id, reply, job), {
+    signal: controller.signal,
+    onEvent: (e) => { if (e.t === 'delta') { got += e.text; if (got.length > 3) controller.abort(); } }
+  }).catch(() => {});
+  return url;
+}
+const settled = async (pc, id) => {
+  for (let i = 0; i < 150 && (await pc.storage.getChat(id)).messages[1].pending; i++) await sleep(20);
+  return (await pc.storage.getChat(id)).messages[1];
+};
+
+test('a reply the computer keeps goes on for much longer than a minute or two without the phone (Android freezes the app after a minute)', async () => {
+  const key = syncKey();
+  // The old rule gave up on a reply nobody was following after graceMs (5 minutes): here 150 ms.
+  const pc = await computer(key, { words: ['One', ' two', ' three', ' four', ' five', ' six.'], delay: 80, serverOptions: { graceMs: 150 } });
+  try {
+    const id = await chatOn(pc, []);
+    await leave(phone(key, pc), pc, id, 'r1', 'job-away');
+    const m = await settled(pc, id);
+    assert.strictEqual(m.content, 'One two three four five six.');
+    assert.ok(!m.pending && !m.interrupted && !m.error && !m.notice);
+  } finally {
+    await pc.server.close();
+  }
+});
+
+test('a reply nobody comes back for in the end is marked cut off with a notice, never saved as finished', async () => {
+  const key = syncKey();
+  const pc = await computer(key, { words: ['One', ' two', ' three', ' four', ' five', ' six.'], delay: 80, serverOptions: { awayMs: 150 } });
+  try {
+    const id = await chatOn(pc, []);
+    const p = phone(key, pc);
+    const url = await leave(p, pc, id, 'r1', 'job-lost');
+    const m = await settled(pc, id);
+    assert.strictEqual(m.pending, false);
+    assert.strictEqual(m.interrupted, true);
+    assert.match(m.notice, /cut off/);
+    assert.ok(m.content.length > 0 && m.content !== 'One two three four five six.');
+    assert.ok(!m.owner);
+    // A phone that comes back for it is told, instead of being handed a partial reply as a finished one.
+    const back = await p.call(url, 'chat', { ...chatCall(id, 'r1', 'job-lost'), from: 1 }).then(() => null, (e) => e);
+    assert.ok(back && /cut off/.test(back.message));
+  } finally {
+    await pc.server.close();
+  }
+});
+
+test('pressing Stop on the phone is a normal ending: no cut-off mark', async () => {
+  const key = syncKey();
+  const pc = await computer(key, { words: ['One', ' two', ' three', ' four', ' five', ' six.'], delay: 80 });
+  try {
+    const id = await chatOn(pc, []);
+    const p = phone(key, pc);
+    const url = await leave(p, pc, id, 'r1', 'job-stop');
+    await p.call(url, 'cancel', { job: 'job-stop' });
+    const m = await settled(pc, id);
+    assert.strictEqual(m.pending, false);
+    assert.ok(!m.interrupted && !m.notice && !m.error);
+  } finally {
+    await pc.server.close();
+  }
+});
+
+test('the computer keeps the lease of a reply fresh while the model is quiet (a tool running)', async () => {
+  const key = syncKey();
+  const pc = await computer(key, { words: ['Hello', ' there', ' friend'], delay: 500, hubOptions: { heartbeatMs: 40 } });
+  try {
+    const id = await chatOn(pc, []);
+    await leave(phone(key, pc), pc, id, 'r1', 'job-quiet');
+    await sleep(100);
+    const first = (await pc.storage.getChat(id)).messages[1].owner.ts;
+    await sleep(150);
+    const later = (await pc.storage.getChat(id)).messages[1];
+    assert.ok(later.pending && later.owner.ts > first);
   } finally {
     await pc.server.close();
   }

@@ -26,6 +26,8 @@ const Lease = require('./lease');
 
 const MAX_WATCHERS = 16;
 const INTERRUPTED = 'This reply was interrupted.';
+// Why a reply is stopped, as the abort signal's reason (see remote-server.js).
+const STOPPED = 'stopped';
 
 function busyError(who, here) {
   const where = who && who.source !== 'local' && who.name ? who.name : here;
@@ -40,10 +42,11 @@ function busyError(who, here) {
  * @param notify        (chatIds) => void, a chat was changed here (tell the window)
  * @param syncNow       () => void, sync now (pull a chat that isn't here yet, push a finished reply)
  * @param flushMs       how often a streaming reply is written into the chat
+ * @param heartbeatMs   how often its lease is refreshed while it is quiet (a tool running, thinking)
  * @param orphanMs      how long a finished reply waits for its chat to arrive through sync
  * @param retryMs       how often it looks
  */
-function createReplyHub({ storage, name = () => 'this computer', notify = () => {}, syncNow = () => {}, now = () => Date.now(), flushMs = 2000, orphanMs = 2 * 60 * 1000, retryMs = 3000 }) {
+function createReplyHub({ storage, name = () => 'this computer', notify = () => {}, syncNow = () => {}, now = () => Date.now(), flushMs = 2000, heartbeatMs = Lease.HEARTBEAT_MS, orphanMs = 2 * 60 * 1000, retryMs = 3000 }) {
   const active = new Map();   // chat id -> who is writing its reply
   const watchers = new Set();
 
@@ -125,6 +128,7 @@ function createReplyHub({ storage, name = () => 'this computer', notify = () => 
           if (fin.stats) m.stats = fin.stats;
           if (fin.error) m.error = fin.error;
           if (fin.notice) m.notice = fin.notice;
+          if (fin.interrupted) m.interrupted = true;
         } else {
           m.owner = owner();
         }
@@ -136,6 +140,15 @@ function createReplyHub({ storage, name = () => 'this computer', notify = () => 
       }
       return found ? 'skipped' : 'missing';
     };
+
+    // A reply can go a long while without a word (a tool running, the model
+    // thinking): refresh the lease anyway, or the other devices would see it
+    // as cut off after a minute and a half.
+    const beat = setInterval(() => {
+      dirty = true;
+      if (!timer) flush();
+    }, heartbeatMs);
+    if (beat.unref) beat.unref();
 
     const queue = (fin) => {
       const run = chain.then(() => (over ? 'skipped' : write(fin)));
@@ -172,8 +185,9 @@ function createReplyHub({ storage, name = () => 'this computer', notify = () => 
       },
       // The reply ended: `result` is what the model returned (or null), `error`
       // what went wrong. The reply is finished in the chat and synced.
-      async finish({ result = null, error = null, aborted = false } = {}) {
+      async finish({ result = null, error = null, aborted = false, interrupted = false } = {}) {
         clearTimeout(timer);
+        clearInterval(beat);
         timer = null;
         // Like the phone's own copy: the full text when only the last bits are missing.
         const full = result && typeof result.text === 'string' && result.text.length > text.length && result.text.startsWith(text) ? result.text : null;
@@ -182,8 +196,11 @@ function createReplyHub({ storage, name = () => 'this computer', notify = () => 
           content: text,
           stats: result && result.stats ? { ...result.stats, engine: `${result.stats.engine || 'Model'} on ${name()}` } : null,
           error: error && !aborted ? `Error: ${error.message || error}` : null,
-          notice: result && result.stopReason === 'max_tokens'
-            ? 'The reply was cut off at the length limit. Ask it to continue, or raise "Max tokens" in Settings.' : null
+          notice: interrupted
+            ? `This reply was cut off on ${name()} before it finished (the phone was away too long, or sharing was turned off). Tap Regenerate to ask again.`
+            : result && result.stopReason === 'max_tokens'
+              ? 'The reply was cut off at the length limit. Ask it to continue, or raise "Max tokens" in Settings.' : null,
+          interrupted
         };
         const first = await queue(fin).catch(() => 'skipped');
         if (first === 'saved') {
@@ -214,7 +231,7 @@ function createReplyHub({ storage, name = () => 'this computer', notify = () => 
   // Runs a chat request from the phone: claims the chat, mirrors the reply into
   // this computer's copy of the chat (when the phone says which), and releases.
   // run(onDelta) does the work and returns what the model returned.
-  async function remoteChat(msg, { emit }, run) {
+  async function remoteChat(msg, { emit, signal }, run) {
     const chatId = typeof msg.chatId === 'string' ? msg.chatId : msg.req && typeof msg.req.chatId === 'string' ? msg.req.chatId : null;
     const release = claim(chatId, { source: 'phone', deviceId: typeof msg.deviceId === 'string' ? msg.deviceId : null, name: typeof msg.deviceName === 'string' && msg.deviceName ? msg.deviceName : 'your phone' });
     const t = target(msg);
@@ -234,7 +251,11 @@ function createReplyHub({ storage, name = () => 'this computer', notify = () => 
       throw err;
     } finally {
       release();
-      if (copy) await copy.finish({ result, error, aborted: aborted || (result && result.aborted) });
+      const stopped = aborted || !!(result && result.aborted);
+      // Stopped by the user: a normal ending. Stopped by anything else (no one
+      // came back for it, sharing turned off): cut off, and says so.
+      const cutOff = !!signal && signal.aborted && typeof signal.reason === 'string' && signal.reason !== STOPPED;
+      if (copy) await copy.finish({ result, error, aborted: stopped, interrupted: cutOff });
     }
   }
 

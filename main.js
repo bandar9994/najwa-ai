@@ -368,7 +368,7 @@ const remoteHandlers = {
     await checkShared(msg.provider);
     // One reply per chat (a second one is refused with a "busy" error), and
     // the reply is kept in this computer's copy of the chat too.
-    return whileAnswering(() => replies.remoteChat(msg, { emit }, (onDelta) => runChat(msg.provider, msg.req || {}, onDelta, signal, (info) => emit({ t: 'info', info }))));
+    return whileAnswering(() => replies.remoteChat(msg, { emit, signal }, (onDelta) => runChat(msg.provider, msg.req || {}, onDelta, signal, (info) => emit({ t: 'info', info }))));
   },
   // The phone stays connected and is told when this computer has new data to sync.
   watch: (msg, ctx) => replies.watch(msg, ctx),

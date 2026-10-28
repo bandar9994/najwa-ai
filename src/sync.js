@@ -676,6 +676,29 @@ function betterCopy(a, b, now) {
   return a;
 }
 
+// Whatever copy wins, text of a reply that was already shown must not vanish.
+// A copy that was cut short (the phone stopped following, or the computer gave
+// up) can be the better ranked one while the other copy has more of the same
+// reply; the winner then takes that longer text. Two finished copies that
+// disagree (not one the start of the other) keep the longer one, which costs
+// the shorter one's text but never the other way round. Only replies by the
+// assistant: a user's message that was edited is the edit.
+function keepText(win, lose, now) {
+  if (win.role !== 'assistant' || lose.role !== 'assistant') return win;
+  const w = String(win.content || '');
+  const l = String(lose.content || '');
+  if (l.length <= w.length || l === w) return win;
+  // A reply still being written by its live owner is that owner's to extend.
+  if (win.pending && Lease.liveReply(win, now)) return win;
+  const extends_ = l.startsWith(w);
+  if (!extends_ && (doneness(win, now) !== 3 || doneness(lose, now) !== 3)) return win;
+  win.content = lose.content;
+  // The longer text was cut off: the reply as a whole still was.
+  if (!win.pending && lose.interrupted && !win.interrupted) win.interrupted = true;
+  if (lose.notice && !win.notice && lose.interrupted) win.notice = lose.notice;
+  return win;
+}
+
 // The same chat changed on two devices before they synced: keep the newer
 // version and add any messages only the other one has, so nothing is lost.
 function mergeChats(a, b, { now = Date.now() } = {}) {
@@ -686,7 +709,9 @@ function mergeChats(a, b, { now = Date.now() } = {}) {
   const olderById = new Map(older.messages.filter((m) => m.id).map((m) => [m.id, m]));
   merged.messages = merged.messages.map((m) => {
     const other = m.id && olderById.get(m.id);
-    return other && betterCopy(m, other, now) === other ? structuredClone(other) : m;
+    if (!other) return m;
+    const win = betterCopy(m, other, now);
+    return keepText(structuredClone(win), win === m ? other : m, now);
   });
   if (extra.length) {
     merged.messages = [...merged.messages, ...structuredClone(extra)]
