@@ -548,6 +548,8 @@ function renderSelectors() {
   const model = currentModel();
   el.modelSelect.replaceChildren(modelOptions(model));
   el.modelSelect.value = modelKey(model);
+  // The closed select clips long names; the full name stays available on hover/long-press.
+  el.modelSelect.title = el.modelSelect.selectedOptions[0]?.textContent || 'Model';
 
   el.assistantSelect.replaceChildren(...S.settings.assistants.map((p) => h('option', { value: p.id, text: `${p.emoji || '🤖'} ${p.name}` })));
   el.assistantSelect.value = currentAssistantId();
