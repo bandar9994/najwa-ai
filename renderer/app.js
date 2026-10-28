@@ -1102,14 +1102,104 @@ function updateSendButton() {
 // stopped or cut off). The queue lives in this window only: nothing of it is
 // saved or synced until a message is really sent.
 
-const queuedByChat = new Map(); // chat id -> [{ text, images }]
+const queuedByChat = new Map(); // chat id -> [{ id, text, images, createdAt }]
 const queued = {
   get: (chat) => queuedByChat.get(chat.id),
-  set: (chat, list) => queuedByChat.set(chat.id, list),
-  delete: (chat) => queuedByChat.delete(chat.id)
+  set: (chat, list) => { queuedByChat.set(chat.id, list); persistQueue(); },
+  delete: (chat) => { const had = queuedByChat.delete(chat.id); persistQueue(); return had; }
 };
+const inflightQueued = new Map(); // chat id -> the entry being sent (kept on disk until the send is accepted)
 const retryAt = new Map();      // chat id -> when a message the computer refused may be tried again
 const fromQueue = new WeakMap(); // sent user message -> the queued entry it came from
+
+// The queue survives closing the app: it is kept in this device's own
+// state.json (the same local file that holds drafts; it is never synced, never
+// in a backup, and not part of a chat). Messages with pictures stay in memory
+// only, as pictures are too heavy for that file.
+const MAX_QUEUED = 20;        // per chat
+const MAX_QUEUED_CHATS = 50;
+const MAX_QUEUED_TEXT = 20000;
+
+const queueEntry = (text, images) => ({ id: uid(), text, images, createdAt: Date.now() });
+
+// What goes on disk: text-only messages, the one being sent first.
+function queueSnapshot(byChat, inflight) {
+  const out = {};
+  for (const [id, list] of byChat) {
+    const items = [...(inflight.has(id) ? [inflight.get(id)] : []), ...list]
+      .filter((q) => q && q.text && !(q.images && q.images.length))
+      .slice(0, MAX_QUEUED)
+      .map((q) => ({ id: q.id, text: String(q.text).slice(0, MAX_QUEUED_TEXT), createdAt: q.createdAt }));
+    if (items.length) out[id] = items;
+    if (Object.keys(out).length >= MAX_QUEUED_CHATS) break;
+  }
+  for (const [id, q] of inflight) {
+    if (!out[id] && q && q.text && !(q.images && q.images.length)) out[id] = [{ id: q.id, text: String(q.text).slice(0, MAX_QUEUED_TEXT), createdAt: q.createdAt }];
+  }
+  return out;
+}
+
+// What was on disk, checked: anything unexpected is dropped, and a file that
+// isn't an object at all is cleared (bad: true).
+function readQueue(raw) {
+  if (raw == null) return { map: new Map(), bad: false };
+  if (typeof raw !== 'object' || Array.isArray(raw)) return { map: new Map(), bad: true };
+  const map = new Map();
+  let bad = false;
+  for (const [id, list] of Object.entries(raw)) {
+    if (!Array.isArray(list)) { bad = true; continue; }
+    const seen = new Set();
+    const items = [];
+    for (const q of list) {
+      if (!q || typeof q.id !== 'string' || typeof q.text !== 'string' || !q.text || !Number.isFinite(q.createdAt) || seen.has(q.id)) { bad = true; continue; }
+      seen.add(q.id);
+      items.push({ id: q.id, text: q.text.slice(0, MAX_QUEUED_TEXT), images: [], createdAt: q.createdAt, restored: true });
+    }
+    if (items.length && map.size < MAX_QUEUED_CHATS) map.set(id, items.slice(0, MAX_QUEUED));
+  }
+  return { map, bad };
+}
+
+let queueSaved = '{}';
+function persistQueue() {
+  if (typeof api === 'undefined' || !api.state) return;
+  const snap = JSON.stringify(queueSnapshot(queuedByChat, inflightQueued));
+  if (snap === queueSaved) return;
+  queueSaved = snap;
+  api.state.save({ sendQueue: JSON.parse(snap) }).catch(() => { queueSaved = null; });
+}
+
+// At start: the queues of the last run come back (for chats that still exist).
+function restoreQueue(raw, knownIds) {
+  const { map, bad } = readQueue(raw);
+  if (bad) console.warn('Najwa AI: the saved message queue was damaged; dropped what could not be read.');
+  for (const id of [...map.keys()]) if (knownIds && !knownIds.has(id)) map.delete(id);
+  for (const [id, list] of map) queuedByChat.set(id, list);
+  // Write back what is left (a damaged file is cleared; deleted chats go).
+  queueSaved = typeof raw === 'object' && raw && !Array.isArray(raw) ? JSON.stringify(raw) : null;
+  persistQueue();
+}
+
+// Was this restored message already sent before the app closed? (The chat
+// has the same message, saved after it was queued.)
+const alreadySent = (chat, entry) => !!entry.restored &&
+  chat.messages.some((m) => m.role === 'user' && m.content === entry.text && (m.createdAt || 0) >= entry.createdAt);
+
+// The chat is gone (deleted here or on another device): so are its waiting messages.
+function dropQueue(id) {
+  queuedByChat.delete(id);
+  inflightQueued.delete(id);
+  retryAt.delete(id);
+  persistQueue();
+}
+
+// The send was accepted (the message is saved in the chat): it can leave the disk.
+function acceptQueued(chat, entry) {
+  if (entry && inflightQueued.get(chat.id) === entry) {
+    inflightQueued.delete(chat.id);
+    persistQueue();
+  }
+}
 
 function drawQueued() {
   const list = (S.current && queued.get(S.current)) || [];
@@ -1196,7 +1286,7 @@ async function sendWhileReplying(chat, text, images) {
     r.msg.tools.splice(r.msg.tools.indexOf(step), 1);
     scheduleMessageRender(chat, r.msg);
   }
-  queued.set(chat, [...(queued.get(chat) || []), { text, images }]);
+  queued.set(chat, [...(queued.get(chat) || []), queueEntry(text, images)]);
   if (isStreaming(chat)) {
     // Plain text: the reply stops here (what it wrote is kept) and this goes next.
     if (action === 'steer') interruptFor(chat);
@@ -1217,12 +1307,12 @@ function settleSteers(chat, msg, res) {
   for (const t of steers) t.status = unread.includes(t) ? 'moved' : 'read';
   if (!unread.length) return;
   msg.tools = msg.tools.filter((t) => !unread.includes(t));
-  queued.set(chat, [...unread.map((t) => ({ text: t.text, images: [] })), ...(queued.get(chat) || [])]);
+  queued.set(chat, [...unread.map((t) => queueEntry(t.text, [])), ...(queued.get(chat) || [])]);
 }
 
 // Only when nothing is being written in the chat, here or on another device.
 function canSendQueued(chat, now = Date.now()) {
-  return !isStreaming(chat) && !replyElsewhere(chat) && !((retryAt.get(chat.id) || 0) > now);
+  return !isStreaming(chat) && !replyElsewhere(chat) && !((retryAt.get(chat.id) || 0) > now) && !!chatModel(chat);
 }
 
 // After a reply: the next waiting message goes (one at a time; the reply to it
@@ -1241,12 +1331,16 @@ function sendQueued(chat, res) {
   }
   // Another device is still writing: it waits, and flushQueued sends it later.
   if (!canSendQueued(chat)) { drawQueued(); return; }
+  // One that was queued before the app closed, and went out just before it did.
+  while (list.length && alreadySent(chat, list[0])) list.shift();
+  if (!list.length) { queued.delete(chat); drawQueued(); return; }
   const [first, ...rest] = list;
+  inflightQueued.set(chat.id, first);
   if (rest.length) queued.set(chat, rest); else queued.delete(chat);
   const message = { id: uid(), role: 'user', content: first.text, ...(first.images.length ? { images: first.images } : {}), createdAt: Date.now() };
   fromQueue.set(message, first);
   chat.messages.push(message);
-  runCompletion(chat);
+  runCompletion(chat, first);
   drawQueued();
 }
 
@@ -1261,7 +1355,7 @@ function flushAllQueued() {
   for (const id of [...queuedByChat.keys()]) {
     const chat = S.cache.get(id);
     if (chat) flushQueued(chat);
-    else loadChat(id).then((c) => { if (c) flushQueued(c); else queuedByChat.delete(id); }).catch(() => {});
+    else loadChat(id).then((c) => { if (c) flushQueued(c); else dropQueue(id); }).catch(() => {});
   }
 }
 
@@ -1619,6 +1713,7 @@ async function deleteChat(id) {
   const cached = S.cache.get(id);
   for (const [rid, r] of S.requests) if (r.chat === cached) api.ai.abort(rid);
   saveQueue.drop(id);
+  dropQueue(id);
   await api.chats.remove(id);
   S.cache.delete(id);
   if (S.current && S.current.id === id) newChat();
@@ -1975,7 +2070,7 @@ async function send() {
       el.input.value = '';
       autoGrow();
       saveDraft(chat.id, '');
-      queued.set(chat, [...(queued.get(chat) || []), { text, images }]);
+      queued.set(chat, [...(queued.get(chat) || []), queueEntry(text, images)]);
       flushQueued(chat);
       updateSendButton();
       return;
@@ -2022,9 +2117,10 @@ async function send() {
   await runCompletion(chat);
 }
 
-async function runCompletion(chat) {
+async function runCompletion(chat, entry) {
   const model = chatModel(chat);
   if (!model) {
+    acceptQueued(chat, entry);
     toast('Choose a model first (top right).');
     return;
   }
@@ -2032,6 +2128,7 @@ async function runCompletion(chat) {
   // One reply at a time per chat: not while another device is writing one.
   const there = replyElsewhere(chat);
   if (there) {
+    acceptQueued(chat, entry);
     toast(Lease.text('busyElsewhere', there.owner.name));
     return;
   }
@@ -2048,6 +2145,7 @@ async function runCompletion(chat) {
   }
   voiceReplyStarted(chat, msg);
   await saveChatNow(chat);
+  acceptQueued(chat, entry);
 
   const requestId = uid();
   const request = { chat, msg };
@@ -2115,6 +2213,7 @@ async function runCompletion(chat) {
     const askAt = chat.messages.indexOf(asker);
     if (entry && askAt >= 0) {
       chat.messages.splice(askAt, 1);
+      inflightQueued.delete(chat.id);
       queued.set(chat, [entry, ...(queued.get(chat) || [])]);
       retryAt.set(chat.id, Date.now() + 5000);
       setTimeout(() => { const live = S.cache.get(chat.id); if (live) flushQueued(live); }, 5200);
@@ -3556,12 +3655,15 @@ async function init() {
   initVoice();
   renderSyncBadge();
   await refreshList();
+  restoreQueue(S.state.sendQueue, new Set(S.chats.map((c) => c.id)));
 
   const last = S.state.lastChatId && S.chats.find((c) => c.id === S.state.lastChatId);
   if (last) await openChat(last.id);
   else newChat();
 
   loadModels();
+  // Messages left in the queue when the app closed go now, under the usual rules.
+  flushAllQueued();
 }
 
 init();

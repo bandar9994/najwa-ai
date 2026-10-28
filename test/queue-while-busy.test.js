@@ -17,19 +17,20 @@ const Lease = require('../src/lease.js');
 const take = (head) => {
   const start = src.indexOf(head);
   assert.ok(start >= 0, head);
-  const end = head === 'const queued = {' ? src.indexOf('\n};\n', start) + 4 : head.startsWith('const') ? src.indexOf('\n', start) + 1 : src.indexOf('\n}\n', start) + 3;
+  const end = head === 'const queued = {' ? src.indexOf('\n};\n', start) + 4 : head === 'const alreadySent = ' ? src.indexOf(');\n', start) + 3 : head.startsWith('const') || head.startsWith('let') ? src.indexOf('\n', start) + 1 : src.indexOf('\n}\n', start) + 3;
   return src.slice(start, end);
 };
 const parts = [
   'const isAgent = ',
-  'const queuedByChat = ', 'const queued = {', 'const retryAt = ', 'const fromQueue = ',
+  'const queuedByChat = ', 'const queued = {', 'const inflightQueued = ', 'const MAX_QUEUED = ', 'const MAX_QUEUED_CHATS = ', 'const MAX_QUEUED_TEXT = ', 'const queueEntry = ',
+  'function queueSnapshot(', 'function readQueue(', 'let queueSaved = ', 'function persistQueue(', 'function restoreQueue(', 'const alreadySent = ', 'function dropQueue(', 'function acceptQueued(', 'const retryAt = ', 'const fromQueue = ',
   'function interruptFor(', 'function midReplyAction(', 'async function sendWhileReplying(',
   'function canSendQueued(', 'function sendQueued(', 'function flushQueued(', 'function flushAllQueued('
 ].map(take).join('\n');
 
 function world({ model, steerTakes = false, elsewhere = null } = {}) {
   const chat = { id: 'c1', messages: [{ id: 'u0', role: 'user', content: 'first' }] };
-  const log = { steered: [], aborted: [], runs: 0, putBack: [], toasts: [] };
+  const log = { steered: [], aborted: [], runs: 0, putBack: [], toasts: [], warns: [], saved: [] };
   const S = { requests: new Map(), cache: new Map([['c1', chat]]), current: chat };
   const ctx = {
     S, Lease, log, elsewhere: () => ctx.__elsewhere,
@@ -40,13 +41,14 @@ function world({ model, steerTakes = false, elsewhere = null } = {}) {
     scheduleMessageRender() {}, saveChatSoon() {}, drawQueued() {},
     putBack: (c, list) => log.putBack.push(list),
     toast: (t) => log.toasts.push(t),
+    chatModel: () => ctx.__model, __model: { provider: 'ollama', model: 'x' }, console: { warn: (m) => log.warns.push(m) },
     loadChat: async () => null,
     runCompletion: (c) => { log.runs++; ctx.S.requests.set(`r${log.runs}`, { chat: c, msg: { model: ctx.model } }); },
-    api: { ai: { steer: async (id, text) => { log.steered.push(text); return steerTakes; }, abort: (id) => log.aborted.push(id) } },
+    api: { state: { save: async (p) => { log.saved.push(p); } }, ai: { steer: async (id, text) => { log.steered.push(text); return steerTakes; }, abort: (id) => log.aborted.push(id) } },
     model, Date, WeakMap, Map
   };
   vm.createContext(ctx);
-  vm.runInContext(`${parts}; this.fns = { midReplyAction, sendWhileReplying, sendQueued, flushQueued, flushAllQueued, queued, retryAt, fromQueue, interruptFor };`, ctx);
+  vm.runInContext(`${parts}; this.fns = { queueSnapshot, readQueue, restoreQueue, persistQueue, alreadySent, dropQueue, acceptQueued, inflightQueued, queuedByChat, midReplyAction, sendWhileReplying, sendQueued, flushQueued, flushAllQueued, queued, retryAt, fromQueue, interruptFor };`, ctx);
   const startReply = (m = model) => ctx.S.requests.set('live', { chat, msg: { model: m, tools: [] } });
   return { ctx, chat, log, S, fns: ctx.fns, startReply };
 }
@@ -179,4 +181,124 @@ test('queue strings exist in English and Arabic, and the queued bubble is RTL-sa
   const rule = css.match(/\.queued-item \{[^}]*\}/)[0];
   assert.doesNotMatch(rule, /padding-(left|right)|margin-(left|right)/);
   assert.match(src, /class: 'queued-text', dir: 'auto'/);
+});
+
+// ---- the queue survives closing the app ---------------------------------------------
+
+const plain = (x) => JSON.parse(JSON.stringify(x));
+const lastSaved = (w) => plain(w.log.saved.at(-1));
+
+test('every change to the queue is written to the local state, text only, and pictures stay in memory', async () => {
+  const w = world({ model: provider('hermes') });
+  w.startReply();
+  await w.fns.sendWhileReplying(w.chat, 'one', []);
+  await w.fns.sendWhileReplying(w.chat, 'two', []);
+  await w.fns.sendWhileReplying(w.chat, 'with a picture', ['data:image/jpeg;base64,xx']);
+  const saved = lastSaved(w).sendQueue;
+  assert.deepStrictEqual(Object.keys(saved), ['c1']);
+  assert.deepStrictEqual(plain(saved.c1.map((q) => q.text)), ['one', 'two'], 'the picture message is not written');
+  for (const q of saved.c1) {
+    assert.deepStrictEqual(Object.keys(q).sort(), ['createdAt', 'id', 'text'], 'only what is needed to send');
+    assert.ok(q.id && Number.isFinite(q.createdAt));
+  }
+  assert.strictEqual(w.fns.queued.get(w.chat).length, 3, 'it is still queued in memory');
+  // Removing one (the x) updates the file.
+  const list = w.fns.queued.get(w.chat);
+  list.splice(0, 1);
+  w.fns.queued.set(w.chat, list);
+  assert.deepStrictEqual(plain(lastSaved(w).sendQueue.c1.map((q) => q.text)), ['two']);
+  w.fns.queued.delete(w.chat);
+  assert.deepStrictEqual(lastSaved(w).sendQueue, {});
+});
+
+test('a message leaves the disk only after the send is accepted, and a refused one stays', () => {
+  const w = world({ model: provider('ollama') });
+  w.fns.queued.set(w.chat, [{ id: 'a', text: 'one', images: [], createdAt: 1 }, { id: 'b', text: 'two', images: [], createdAt: 2 }]);
+  w.fns.sendQueued(w.chat, { ok: true });
+  // Sending: "one" is on its way but still on disk, with "two".
+  assert.deepStrictEqual(plain(lastSaved(w).sendQueue.c1.map((q) => q.id)), ['a', 'b']);
+  assert.strictEqual(w.fns.inflightQueued.get('c1').id, 'a');
+  w.fns.acceptQueued(w.chat, w.fns.inflightQueued.get('c1')); // saved in the chat
+  assert.deepStrictEqual(plain(lastSaved(w).sendQueue.c1.map((q) => q.id)), ['b']);
+});
+
+test('at start the queues come back, in order, for chats that still exist; a deleted chat\'s are dropped', () => {
+  const w = world({ model: provider('ollama') });
+  const raw = {
+    c1: [{ id: 'a', text: 'one', createdAt: 1 }, { id: 'b', text: 'two', createdAt: 2 }],
+    gone: [{ id: 'z', text: 'lost chat', createdAt: 3 }]
+  };
+  w.fns.restoreQueue(raw, new Set(['c1']));
+  assert.deepStrictEqual(plain(w.fns.queued.get(w.chat).map((q) => q.text)), ['one', 'two']);
+  assert.strictEqual(w.fns.queuedByChat.has('gone'), false);
+  assert.deepStrictEqual(Object.keys(lastSaved(w).sendQueue), ['c1'], 'the deleted chat is cleared from the file');
+  // They go under the usual rules: one at a time.
+  w.fns.flushQueued(w.chat);
+  assert.strictEqual(w.chat.messages.at(-1).content, 'one');
+  assert.strictEqual(w.log.runs, 1);
+});
+
+test('restored messages wait while another device owns the reply, and for a model', () => {
+  const w = world({ model: provider('ollama'), elsewhere: { owner: { name: 'PC' } } });
+  w.fns.restoreQueue({ c1: [{ id: 'a', text: 'wait', createdAt: 1 }] }, new Set(['c1']));
+  w.fns.flushQueued(w.chat);
+  assert.strictEqual(w.log.runs, 0);
+  w.ctx.__elsewhere = null;
+  w.ctx.__model = null; // models not loaded yet
+  w.fns.flushQueued(w.chat);
+  assert.strictEqual(w.log.runs, 0);
+  w.ctx.__model = { provider: 'ollama', model: 'x' };
+  w.fns.flushQueued(w.chat);
+  assert.strictEqual(w.log.runs, 1);
+});
+
+test('a message that went out just before the app closed is not sent twice', () => {
+  const w = world({ model: provider('ollama') });
+  w.chat.messages.push({ id: 'u1', role: 'user', content: 'one', createdAt: 5 });
+  w.fns.restoreQueue({ c1: [{ id: 'a', text: 'one', createdAt: 4 }, { id: 'b', text: 'two', createdAt: 6 }] }, new Set(['c1']));
+  w.fns.flushQueued(w.chat);
+  assert.strictEqual(w.log.runs, 1);
+  assert.strictEqual(w.chat.messages.at(-1).content, 'two', '"one" is already in the chat');
+  assert.strictEqual(w.chat.messages.filter((m) => m.content === 'one').length, 1);
+});
+
+test('damaged storage is cleared with a warning; bad items are dropped, good ones kept', () => {
+  for (const raw of ['junk', 42, [1, 2]]) {
+    const w = world({ model: provider('ollama') });
+    w.fns.restoreQueue(raw, new Set(['c1']));
+    assert.strictEqual(w.fns.queuedByChat.size, 0);
+    assert.strictEqual(w.log.warns.length, 1, `warns for ${JSON.stringify(raw)}`);
+    assert.deepStrictEqual(lastSaved(w).sendQueue, {}, 'cleared on disk');
+  }
+  const w = world({ model: provider('ollama') });
+  w.fns.restoreQueue({ c1: [{ id: 'a', text: 'ok', createdAt: 1 }, { id: 'a', text: 'dup', createdAt: 2 }, { text: 'no id', createdAt: 3 }, null, { id: 'e', text: '', createdAt: 1 }], c2: 'nope' }, new Set(['c1', 'c2']));
+  assert.deepStrictEqual(plain(w.fns.queued.get(w.chat).map((q) => q.text)), ['ok']);
+  assert.strictEqual(w.log.warns.length, 1);
+});
+
+test('the saved queue is capped', () => {
+  const w = world({ model: provider('ollama') });
+  const many = Array.from({ length: 80 }, (_, i) => ({ id: `i${i}`, text: 'x'.repeat(30000), createdAt: i + 1 }));
+  w.fns.restoreQueue({ c1: many }, new Set(['c1']));
+  assert.strictEqual(w.fns.queued.get(w.chat).length, 20);
+  assert.strictEqual(w.fns.queued.get(w.chat)[0].text.length, 20000);
+  const byChat = new Map(Array.from({ length: 80 }, (_, i) => [`chat${i}`, [{ id: `q${i}`, text: 't', images: [], createdAt: 1 }]]));
+  assert.ok(Object.keys(w.fns.queueSnapshot(byChat, new Map())).length <= 50);
+});
+
+test('deleting a chat clears its waiting messages from the file', async () => {
+  const w = world({ model: provider('hermes') });
+  w.startReply();
+  await w.fns.sendWhileReplying(w.chat, 'one', []);
+  w.fns.dropQueue('c1');
+  assert.deepStrictEqual(lastSaved(w).sendQueue, {});
+  assert.strictEqual(w.fns.queuedByChat.has('c1'), false);
+});
+
+test('the queue is kept only in state.json (local), restored at start, and never in a chat or in sync', () => {
+  assert.match(src, /api\.state\.save\(\{ sendQueue: /);
+  assert.match(src, /restoreQueue\(S\.state\.sendQueue, new Set\(S\.chats\.map/);
+  assert.match(src, /flushAllQueued\(\);\n\}\n\ninit\(\);/);
+  const syncSrc = fs.readFileSync(path.join(__dirname, '../src/sync.js'), 'utf8');
+  assert.doesNotMatch(syncSrc, /sendQueue|(?<!sync-)state\.json/, 'the sync never reads the local state file');
 });
