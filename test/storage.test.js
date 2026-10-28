@@ -220,3 +220,23 @@ test('importing a backup merges a chat that is still on this device (nothing add
   const after = await storage.getChat(chat.id);
   assert.deepStrictEqual(after.messages.map((m) => m.id), ['a', 'b']);
 });
+
+test('updateChat changes a chat atomically, and says nothing changed when the change declines', async () => {
+  const { storage } = await tmpStorage();
+  const chat = await storage.createChat({ title: 'Trip' });
+  const seen = [];
+  storage.onChange((kind) => seen.push(kind));
+  // Two updates at once both land: neither works from a copy the other has already changed.
+  await Promise.all([
+    storage.updateChat(chat.id, (c) => { c.title = 'One'; }),
+    storage.updateChat(chat.id, (c) => { c.messages.push({ id: 'm', role: 'user', content: 'hi', createdAt: 1 }); })
+  ]);
+  const saved = await storage.getChat(chat.id);
+  assert.strictEqual(saved.title, 'One');
+  assert.strictEqual(saved.messages.length, 1);
+  assert.ok(seen.includes('chat'));
+  const before = saved.modifiedAt;
+  assert.strictEqual(await storage.updateChat(chat.id, () => false), null);
+  assert.strictEqual(await storage.updateChat('no-such-chat', () => {}), null);
+  assert.strictEqual((await storage.getChat(chat.id)).modifiedAt, before);
+});

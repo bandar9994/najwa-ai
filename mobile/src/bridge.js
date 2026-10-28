@@ -201,6 +201,8 @@ async function phoneId() {
   await storage.saveState({ deviceId: id });
   return id;
 }
+// How this phone is called on other devices ("Replying on Android phone…").
+const phoneName = () => (Capacitor.getPlatform() === 'ios' ? 'iPhone' : Capacitor.getPlatform() === 'android' ? 'Android phone' : 'Browser');
 const phoneOrigin = async () => ({ id: await phoneId(), name: `your ${Capacitor.getPlatform() === 'ios' ? 'iPhone' : 'phone'}`, computer: false });
 const phoneConnectors = (list) => (list || []).filter((c) => c.enabled !== false && c.kind !== 'command');
 
@@ -333,6 +335,7 @@ window.balimda = {
       return {
         version,
         deviceId: await phoneId(),
+        deviceName: phoneName(),
         dataDir: 'Private app storage on this phone',
         platform: Capacitor.getPlatform(),
         appName: 'Najwa AI',
@@ -393,6 +396,15 @@ window.balimda = {
           chatId: req.chatId,
           steering: steer
         };
+        if (req.provider === 'computer') {
+          // For the computer: who is asking and which message this reply is,
+          // so it can keep its own copy of the reply and refuse a second
+          // reply in the same chat (see src/reply-hub.js).
+          request.device = { id: await phoneId(), name: phoneName() };
+          if (req.replyId) request.reply = { id: String(req.replyId), at: req.replyAt, model: req.replyModel || null };
+          // The computer needs this chat to put the reply in: sync it now.
+          if (req.chatId) syncReady.then((sync) => sync.run()).catch(() => {});
+        }
         const onDelta = (text) => {
           for (const cb of aiListeners) cb({ requestId: req.requestId, type: 'delta', text });
         };
@@ -440,7 +452,7 @@ window.balimda = {
         if (err instanceof TypeError && !err.explained && /fetch|network|load failed/i.test(message)) {
           message = `Couldn't reach the server (${message}). Check the address in Settings, and that the server allows connections from other devices.`;
         }
-        return { ok: false, error: message };
+        return { ok: false, error: message, ...(err.code === 'busy' ? { code: 'busy' } : {}) };
       } finally {
         active.delete(req.requestId);
         steering.delete(req.requestId);
@@ -574,23 +586,63 @@ if (isNative) {
   });
 }
 
-// Sync when the app opens, when you come back to it, every minute while it's
-// on screen, and when you leave it (so the PC gets your last messages). On
-// leaving, the app first saves the chat it is still writing (renderer/app.js,
-// saveAndSyncNow) and then syncs, so the last words reach the PC even when
-// the reply was still streaming; the sync here only covers what was already
-// saved.
+// Sync when the app opens, when you come back to it, every 20 seconds while
+// it's on screen, and when you leave it (so the PC gets your last messages).
+// On leaving, the app first saves the chat it is still writing
+// (renderer/app.js, saveAndSyncNow) and then syncs, so the last words reach
+// the PC even when the reply was still streaming; the sync here only covers
+// what was already saved. Nothing runs while the app is in the background.
+//
+// While on screen, the phone also stays connected to the computers it is
+// linked with: a computer says when it has new data (a reply written there,
+// or one it finished for this phone) and the phone syncs at once. Computers
+// that don't offer that (older desktop app) are simply polled.
+const VISIBLE_POLL_MS = 20 * 1000;
 syncReady.then((sync) => {
   sync.run();
+  let watching = null;   // AbortController of the open connections
+  let notBefore = 0;     // when to try again after it ended at once (nothing to watch)
+  const stopWatching = () => {
+    if (watching) watching.abort();
+    watching = null;
+  };
+  const startWatching = async () => {
+    if (watching || document.visibilityState !== 'visible' || Date.now() < notBefore) return;
+    const controller = new AbortController();
+    watching = controller;
+    const began = Date.now();
+    try {
+      await computers.watch({
+        deviceId: await phoneId(),
+        signal: controller.signal,
+        onChanged: () => sync.run()
+      });
+    } catch {
+      // nothing to watch (no computer yet): tried again at the next poll
+    } finally {
+      if (watching === controller) watching = null;
+      // Ended at once: no computer, or only older ones. Not again for a while.
+      if (!controller.signal.aborted && Date.now() - began < 5000) notBefore = Date.now() + 5 * 60 * 1000;
+    }
+  };
+  const foreground = () => {
+    sync.run();
+    startWatching();
+  };
+  startWatching();
   setInterval(() => {
-    if (document.visibilityState === 'visible') sync.run();
-  }, 60 * 1000);
+    if (document.visibilityState !== 'visible') return;
+    sync.run();
+    startWatching();
+  }, VISIBLE_POLL_MS);
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') sync.run();
+    if (document.visibilityState === 'visible') foreground();
+    else stopWatching();
   });
   if (isNative) {
-    App.addListener('resume', () => sync.run());
+    App.addListener('resume', foreground);
     App.addListener('pause', () => {
+      stopWatching();
       // The web view's own "hidden" event may not come before the app is
       // frozen, so ask the app to save and sync from here too.
       window.dispatchEvent(new Event('najwa:background'));

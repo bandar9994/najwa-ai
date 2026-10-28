@@ -9,6 +9,8 @@ const { Storage } = require('./src/storage');
 const { nodeFsBackend } = require('./src/backends/node-fs');
 const { PROVIDERS, normalizeMessages } = require('./src/providers');
 const { Sync } = require('./src/sync');
+const { createReplyHub } = require('./src/reply-hub');
+const Lease = require('./src/lease');
 const { desktopGoogleAuth } = require('./src/google-auth-desktop');
 const { linkKey } = require('./src/remote');
 const { startRemoteServer, localAddresses } = require('./src/remote-server');
@@ -212,6 +214,7 @@ async function createWindow() {
 // models, and this computer's addresses are published through sync.
 
 let remote = null;        // { port, close } while sharing
+let replies = null;       // reply bookkeeping (src/reply-hub.js)
 let remoteKey = null;     // { syncKey, key }
 let remoteError = null;
 let shareWanted = false;  // settings.shareWithPhone, as last read
@@ -363,8 +366,12 @@ const remoteHandlers = {
   },
   chat: async (msg, { emit, signal }) => {
     await checkShared(msg.provider);
-    return whileAnswering(() => runChat(msg.provider, msg.req || {}, (text) => emit({ t: 'delta', text }), signal, (info) => emit({ t: 'info', info })));
+    // One reply per chat (a second one is refused with a "busy" error), and
+    // the reply is kept in this computer's copy of the chat too.
+    return whileAnswering(() => replies.remoteChat(msg, { emit }, (onDelta) => runChat(msg.provider, msg.req || {}, onDelta, signal, (info) => emit({ t: 'info', info }))));
   },
+  // The phone stays connected and is told when this computer has new data to sync.
+  watch: (msg, ctx) => replies.watch(msg, ctx),
   // The phone answering an agent's request for permission.
   approve: async (msg) => {
     // A connector's question this computer asked, answered from the phone.
@@ -516,6 +523,7 @@ function registerIpc() {
   ipcMain.handle('app:info', async () => ({
     version: app.getVersion(),
     deviceId: await computerId(),
+    deviceName: computerName(),
     dataDir,
     platform: process.platform,
     appName: APP_NAME,
@@ -602,14 +610,28 @@ function registerIpc() {
     // Set by the provider while it can take messages mid-reply (see ai:steer).
     const steering = { send: null };
     activeSteering.set(requestId, steering);
+    let release = () => {};
     try {
+      // One reply per chat: not while a phone is using this computer's models
+      // for it, nor while another device is writing one (see src/lease.js).
+      if (req.chatId) {
+        const chat = await storage.getChat(String(req.chatId)).catch(() => null);
+        const there = Lease.foreignInChat(chat, await computerId());
+        if (there) {
+          const busy = new Error(`A reply is already being written in this chat (on ${there.owner.name || 'another device'}). Wait for it to finish, or stop it there first.`);
+          busy.code = 'busy';
+          throw busy;
+        }
+        release = replies.claim(req.chatId, { source: 'local', deviceId: await computerId(), name: computerName() });
+      }
       const result = await runChat(providerId, { ...req, steering }, (text) => send('ai:event', { requestId, type: 'delta', text }), controller.signal,
         (info) => send('ai:event', { requestId, type: 'info', ...info }));
       return { ok: true, ...result };
     } catch (err) {
       if (controller.signal.aborted) return { ok: true, aborted: true };
-      return { ok: false, error: err.message || String(err) };
+      return { ok: false, error: err.message || String(err), ...(err.code === 'busy' ? { code: 'busy' } : {}) };
     } finally {
+      release();
       activeRequests.delete(requestId);
       activeSteering.delete(requestId);
     }
@@ -660,12 +682,23 @@ app.whenReady().then(async () => {
     fetch: (url, opts) => net.fetch(url, opts),
     googleAuth: googleAuth(),
     onEvent: (evt) => {
+      // Data this computer just pushed: the phones watching it sync now.
+      if (evt.type === 'pushed') {
+        if (replies) replies.announce(evt);
+        return;
+      }
       send('sync:event', evt);
       // Sync was just set up or removed: start or stop sharing with the phone.
       if (evt.type === 'status' && !remoteError && !!remote !== !!(sync.linkKey() && shareWanted)) updateRemote();
     }
   });
   await sync.load();
+  replies = createReplyHub({
+    storage,
+    name: computerName,
+    notify: (chats) => send('sync:event', { type: 'changed', chats, deleted: [], settings: false }),
+    syncNow: () => { sync.run().catch(() => {}); }
+  });
   voice = createVoice({
     binDir: whisperDir,
     modelsDir: path.join(app.getPath('userData'), 'whisper'),
@@ -681,7 +714,16 @@ app.whenReady().then(async () => {
   });
 
   sync.run();
-  setInterval(() => sync.run(), 60 * 1000);
+  // Every 20 s while the window is open (or a phone may be watching), so a
+  // reply written on the phone shows up here soon; once a minute otherwise.
+  let quietTicks = 0;
+  setInterval(() => {
+    const active = (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && !mainWindow.isMinimized()) || !!remote;
+    if (active || ++quietTicks >= 3) {
+      quietTicks = 0;
+      sync.run();
+    }
+  }, 20 * 1000);
 
   // Share with the phone if turned on; keep the published addresses current
   // (Wi-Fi changes, laptop moves between networks).

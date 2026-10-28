@@ -726,6 +726,8 @@ textarea.input { resize: vertical; }
 .agent-step.running .agent-state { color: var(--accent); }
 .agent-step .agent-state { flex-shrink: 0; font-size: 12px; }
 .agent-more, .agent-status { font-size: 12px; color: var(--text-dim); }
+/* A reply being written on another device (see src/lease.js). */
+.replying-on { margin-top: 6px; font-size: 12px; color: var(--text-dim); }
 .agent-done summary { cursor: pointer; font-size: 13px; color: var(--text-dim); }
 .agent-done .agent-step { margin: 4px 0 0 16px; }
 .approval { border: 1px solid var(--accent); border-radius: var(--radius); padding: 10px 12px; margin: 4px 0; background: var(--bg-elev); }
