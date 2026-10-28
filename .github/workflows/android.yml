@@ -98,7 +98,7 @@ jobs:
           if ! gh release view android-latest >/dev/null 2>&1; then
             gh release create android-latest --prerelease --target "$GITHUB_SHA" \
               --title "$TITLE" \
-              --notes "Newest Android build. Download Najwa-AI-android.apk and open it on your phone; it installs over the previous version and keeps your chats."
+              --notes "Newest Android build. Download Najwa-AI-android.apk and open it on your phone; later updates install over it and keep your chats. Moving from a build before the app ID change (com.bandaraltariqi.najwa) is a one-time reinstall: sign in to sync and enter your passphrase, and your chats come back through sync."
           fi
           gh release upload android-latest Najwa-AI-android.apk --clobber
           gh release delete-asset android-latest Pal-android.apk --yes 2>/dev/null || true
@@ -108,4 +108,4 @@ jobs:
           gh release view android-latest --json assets --jq '.assets[].name' | { grep -E '^Balimda-|^Najwa-AI-v[0-9.]+\.apk$' || true; } | while read -r old; do
             gh release delete-asset android-latest "$old" --yes || true
           done
-          gh release edit android-latest --title "$TITLE" --notes "Najwa AI ${VERSION} for Android (from ${GITHUB_SHA::7}, $(date -u '+%Y-%m-%d %H:%M UTC')). Download Najwa-AI-android.apk and open it on your phone; it installs over the previous version and keeps your chats."
+          gh release edit android-latest --title "$TITLE" --notes "Najwa AI ${VERSION} for Android (from ${GITHUB_SHA::7}, $(date -u '+%Y-%m-%d %H:%M UTC')). Download Najwa-AI-android.apk and open it on your phone; later updates install over it and keep your chats. Moving from a build before the app ID change (com.bandaraltariqi.najwa) is a one-time reinstall: sign in to sync and enter your passphrase, and your chats come back through sync."
