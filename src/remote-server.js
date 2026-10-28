@@ -305,7 +305,7 @@ function startRemoteServer({ getKey, handlers, port = PORT, host = '0.0.0.0', he
     // This computer keeps the reply itself (and shows it in its own chat):
     // it waits much longer for a phone that went away.
     const kept = typeof msg.chatId === 'string' && !!msg.chatId && !!msg.reply && typeof msg.reply.id === 'string' && typeof msg.deviceId === 'string';
-    const job = { id, events: [], listeners: new Set(), finished: false, controller: new AbortController(), timer: null, away: kept ? awayMs : graceMs };
+    const job = { id, chatId: kept ? msg.chatId : null, events: [], listeners: new Set(), finished: false, controller: new AbortController(), timer: null, away: kept ? awayMs : graceMs };
     const push = (evt) => {
       if (job.finished) return;
       job.events.push(evt);
@@ -394,6 +394,17 @@ function startRemoteServer({ getKey, handlers, port = PORT, host = '0.0.0.0', he
         server.on('error', () => {});
         resolve({
           port: server.address().port,
+          // Stop the replies being written here for a chat (the person pressed
+          // Stop on this computer, for a reply the phone asked for). Returns how many.
+          stopChat: (chatId) => {
+            let n = 0;
+            for (const job of jobs.values()) {
+              if (job.finished || job.chatId !== String(chatId)) continue;
+              job.controller.abort(STOPPED);
+              n++;
+            }
+            return n;
+          },
           close: () => new Promise((r) => {
             // Sharing stops: so do the replies still being written.
             for (const job of jobs.values()) job.controller.abort(LOST);

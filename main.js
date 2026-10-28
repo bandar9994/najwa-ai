@@ -657,6 +657,10 @@ function registerIpc() {
 
   ipcMain.handle('ai:approve', (_e, providerId, _model, payload) => approveOn(providerId, payload));
 
+  // Stop a reply a phone asked this computer for (Stop pressed here, in the chat
+  // where the reply shows as "Replying on <phone>"). 0 when this computer isn't writing it.
+  ipcMain.handle('ai:stopElsewhere', (_e, chatId) => (remote ? remote.stopChat(String(chatId)) : 0));
+
   ipcMain.handle('ai:abort', (_e, requestId) => {
     const c = activeRequests.get(requestId);
     if (c) c.abort();

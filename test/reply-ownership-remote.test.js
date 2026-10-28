@@ -266,3 +266,24 @@ test('the computer keeps the lease of a reply fresh while the model is quiet (a 
     await pc.server.close();
   }
 });
+
+test('Stop pressed on the computer for a reply the phone asked for stops it as a normal ending, and only that chat\'s reply', async () => {
+  const key = syncKey();
+  const pc = await computer(key, { words: ['One', ' two', ' three', ' four', ' five', ' six.'], delay: 80 });
+  try {
+    const id = await chatOn(pc, []);
+    await leave(phone(key, pc), pc, id, 'r1', 'job-pcstop');
+    assert.strictEqual(pc.server.stopChat('some-other-chat'), 0);
+    assert.strictEqual(pc.server.stopChat(id), 1);
+    const m = await settled(pc, id);
+    assert.strictEqual(m.pending, false);
+    assert.ok(!m.interrupted && !m.notice && !m.error);
+    assert.notStrictEqual(m.content, 'One two three four five six.');
+    // (The job itself ends a moment after the chat is saved.)
+    let left = 1;
+    for (let i = 0; i < 50 && left; i++) { left = pc.server.stopChat(id); if (left) await sleep(20); }
+    assert.strictEqual(left, 0, 'nothing left to stop');
+  } finally {
+    await pc.server.close();
+  }
+});

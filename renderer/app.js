@@ -35,6 +35,8 @@ const el = {
   input: $('#input'),
   sendBtn: $('#sendBtn'),
   stopBtn: $('#stopBtn'),
+  busyDot: $('#busyDot'),
+  composerBox: $('.composer-box'),
   queued: $('#queued'),
   micBtn: $('#micBtn'),
   attachBtn: $('#attachBtn'),
@@ -219,8 +221,22 @@ function isStreaming(chat) {
 const myDeviceId = () => (S.info && S.info.deviceId) || S.state.deviceId;
 const myDeviceName = () => (S.info && S.info.deviceName) || 'this device';
 
-// A reply being written in the chat by another device, if there is one.
-const replyElsewhere = (chat) => Lease.foreignInChat(chat, myDeviceId());
+// A reply being written in the chat that this window isn't running itself,
+// if there is one: another device's, or one this device asked a computer for
+// and is only watching now (it came back after being away). Whether it is
+// still being written is up to its lease (src/lease.js), so it can't stay.
+const replyElsewhere = (chat) => (isStreaming(chat) ? null : Lease.replyInProgress(chat));
+
+// Does this window itself run the reply (a request of its own is open)?
+function runsHere(msg) {
+  for (const r of S.requests.values()) if (r.msg === msg) return true;
+  return false;
+}
+
+// Stop for a reply this window doesn't run: only a computer can, for a reply a
+// phone asked it for (it holds the job). Everything else is stopped on the
+// device that runs it.
+const canStopElsewhere = (msg) => !!msg && typeof api.ai.stopElsewhere === 'function' && msg.owner.deviceId !== myDeviceId();
 
 // ---------------------------------------------------------------------------
 // modal helpers
@@ -394,7 +410,7 @@ function renderSidebar() {
     h('div', { class: 'ci-body' },
       h('div', { class: 'ci-title', dir: 'auto', text: c.title }),
       c.preview ? h('div', { class: 'ci-preview', dir: 'auto', text: c.preview }) : null),
-    cached && isStreaming(cached) ? h('span', { class: 'ci-dot', title: 'Replying…' }) : null,
+    cached && (isStreaming(cached) || Lease.replyInProgress(cached)) ? h('span', { class: 'ci-dot', title: 'Replying…' }) : null,
     h('button', {
       class: 'ci-del',
       title: 'Delete chat',
@@ -821,7 +837,11 @@ function fillContent(container, msg) {
     }
   }
   // Being written by another device: say where, instead of showing a reply that looks stuck.
-  if (Lease.foreignReply(msg, myDeviceId())) container.append(h('div', { class: 'replying-on', text: Lease.text('replyingOn', msg.owner.name) }));
+  if (Lease.isReplyInProgress(msg) && !runsHere(msg)) {
+    container.append(h('div', { class: 'replying-on', role: 'status' },
+      h('span', { class: 'busy-spin', 'aria-hidden': 'true' }),
+      h('span', { dir: 'auto', text: Lease.text('replyingOn', msg.owner.name) })));
+  }
 }
 
 // ---- Hermes Agent: live tool steps and approvals ------------------------------
@@ -1044,6 +1064,10 @@ function updateComposer() {
     const other = voiceLang() === 'en-US' ? 'ar-SA' : 'en-US';
     el.hint.replaceChildren(`Listening in ${VOICE_LANGS[voiceLang()]}… ${S.info.mobile ? 'tap' : 'click'} the mic when you're done · `,
       h('a', { href: '#', text: `Switch to ${VOICE_LANGS[other]}`, onclick: (e) => { e.preventDefault(); toggleVoiceLang(); } }));
+  } else if (S.current && replyElsewhere(S.current)) {
+    const there = replyElsewhere(S.current);
+    el.hint.classList.add('model-note');
+    el.hint.textContent = canStopElsewhere(there) ? Lease.text('replyingOn', there.owner.name) : `${Lease.text('replyingOn', there.owner.name)} ${Lease.text('stopThere', there.owner.name)}`;
   } else if (note) el.hint.textContent = note;
   else if (S.info.mobile) el.hint.textContent = S.sync && S.sync.configured ? 'Every chat is saved on this phone and synced' : 'Every chat is saved on this phone';
   else {
@@ -1057,8 +1081,16 @@ function updateComposer() {
 // send (it waits for the reply, see queued).
 function updateSendButton() {
   const streaming = isStreaming(S.current);
-  el.stopBtn.hidden = !streaming;
-  el.sendBtn.hidden = streaming && !el.input.value.trim() && !pictures.length;
+  const there = replyElsewhere(S.current);
+  const canStop = !!there && canStopElsewhere(there);
+  const busy = streaming || !!there;
+  el.stopBtn.hidden = !(streaming || canStop);
+  el.stopBtn.title = streaming ? 'Stop the reply' : `Stop the reply (on ${there && there.owner.name})`;
+  // A reply that can't be stopped from here still shows the window is busy.
+  el.busyDot.hidden = !(there && !canStop);
+  if (there) el.busyDot.title = Lease.text('replyingOn', there.owner.name);
+  el.composerBox.classList.toggle('busy', busy);
+  el.sendBtn.hidden = busy && !el.input.value.trim() && !pictures.length;
   el.sendBtn.title = streaming ? 'Send (it waits for the reply, or the agent reads it after its current step)' : 'Send';
   drawQueued();
 }
@@ -1451,6 +1483,18 @@ function voiceReplyUpdated(msg) {
 // ---------------------------------------------------------------------------
 // actions
 
+// When this window started: a reply of this device still marked as pending from
+// before is a leftover of a run that ended with the app. One of this device's
+// that was refreshed since is the computer's copy of a reply it is writing for
+// this phone: it is only watched here (see replyElsewhere).
+const APP_STARTED = Date.now();
+
+// A reply some other device is writing, or one this device asked a computer for.
+function watchedReply(m, now) {
+  if (!Lease.isReplyInProgress(m, now)) return false;
+  return m.owner.deviceId !== myDeviceId() || m.owner.ts >= APP_STARTED;
+}
+
 // Read a chat from storage (not into the cache).
 async function readChat(id) {
   const chat = await api.chats.get(id);
@@ -1461,7 +1505,7 @@ async function readChat(id) {
   // before owners existed) are always cut off, as they were.
   const now = Date.now();
   for (const m of chat.messages) {
-    if (m.pending && !Lease.foreignReply(m, myDeviceId(), now)) Lease.interrupt(m);
+    if (m.pending && !watchedReply(m, now)) Lease.interrupt(m);
   }
   return chat;
 }
@@ -2091,11 +2135,21 @@ async function generateTitle(chat, model = chat.model) {
 
 function stopCurrent() {
   stopReading();
+  let mine = false;
   for (const [rid, r] of S.requests) {
     if (r.chat !== S.current) continue;
+    mine = true;
     r.stopped = true;
     api.ai.abort(rid);
   }
+  if (mine) return;
+  // A reply a phone asked this computer for: this computer holds it.
+  const there = replyElsewhere(S.current);
+  if (!there || !canStopElsewhere(there)) return;
+  const chat = S.current;
+  api.ai.stopElsewhere(chat.id).then((n) => {
+    if (!n) toast(Lease.text('stopFailed', there.owner.name), 6000);
+  }).catch(() => toast(Lease.text('stopFailed', there.owner.name), 6000));
 }
 
 async function regenerate(chat) {
@@ -2295,12 +2349,17 @@ function expireLeases() {
   const chat = S.current;
   if (!chat || isStreaming(chat)) return;
   const now = Date.now();
+  let changed = false;
   chat.messages.forEach((m, i) => {
-    if (!m.pending || !m.owner || m.owner.deviceId === myDeviceId() || Lease.leaseLive(m.owner, now)) return;
+    // (This window runs none of them here, see above: an owner of this device
+    // too is a reply it only watches, and goes stale like any other.)
+    if (!m.pending || !m.owner || Lease.leaseLive(m.owner, now)) return;
     Lease.interrupt(m);
+    changed = true;
     const node = el.messages.querySelector(`.msg[data-id="${m.id}"]`);
     if (node) node.replaceWith(renderMessage(chat, m, i));
   });
+  if (changed) updateComposer();
 }
 
 function syncView(onCleanup, field) {
