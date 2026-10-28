@@ -7,10 +7,19 @@ const assert = require('node:assert');
 const http = require('http');
 const { PROVIDERS, normalizeMessages } = require('../src/providers');
 
+// Every test server is tracked and closed after the file runs, so a failed
+// assertion that skips a test's own close() can't keep node --test alive.
+const openServers = new Set();
+test.after(() => {
+  for (const srv of openServers) { srv.closeAllConnections?.(); srv.close(); }
+});
+
 function server(handler) {
   return new Promise((resolve) => {
     const srv = http.createServer(handler).listen(0, '127.0.0.1', () => {
-      resolve({ url: `http://127.0.0.1:${srv.address().port}`, close: () => srv.close() });
+      openServers.add(srv);
+      const close = () => { openServers.delete(srv); srv.closeAllConnections?.(); srv.close(); };
+      resolve({ url: `http://127.0.0.1:${srv.address().port}`, close, closeAllConnections: () => srv.closeAllConnections?.() });
     });
   });
 }
@@ -153,24 +162,27 @@ test('anthropic streams text, sends system prompt and fallback beta for Opus 5',
     requests.push({ url: req.url, headers: req.headers, body: await readBody(req) });
     sse(res, claudeEvents('Hello from Claude'));
   });
-  const cfg = { apiKey: 'test-key', baseUrl: s.url };
-  const deltas = [];
-  const r = await PROVIDERS.anthropic.impl.streamChat(cfg,
-    { model: 'claude-opus-5', system: 'sys', messages: [{ role: 'user', content: 'hi' }] }, (d) => deltas.push(d));
-  assert.strictEqual(r.text, 'Hello from Claude');
-  assert.strictEqual(r.stopReason, 'end_turn');
-  const first = requests[0];
-  assert.strictEqual(first.headers['x-api-key'], 'test-key');
-  assert.match(first.headers['anthropic-beta'], /server-side-fallback-2026-07-01/);
-  assert.strictEqual(first.body.fallbacks, 'default');
-  assert.strictEqual(first.body.system, 'sys');
-  assert.strictEqual(first.body.max_tokens, 64000);
+  try {
+    const cfg = { apiKey: 'test-key', baseUrl: s.url };
+    const deltas = [];
+    const r = await PROVIDERS.anthropic.impl.streamChat(cfg,
+      { model: 'claude-opus-5', system: 'sys', messages: [{ role: 'user', content: 'hi' }] }, (d) => deltas.push(d));
+    assert.strictEqual(r.text, 'Hello from Claude');
+    assert.strictEqual(r.stopReason, 'end_turn');
+    const first = requests[0];
+    assert.strictEqual(first.headers.authorization, 'Bearer test-key');
+    assert.match(first.headers['anthropic-beta'], /server-side-fallback-2026-07-01/);
+    assert.strictEqual(first.body.fallbacks, 'default');
+    assert.strictEqual(first.body.system, 'sys');
+    assert.strictEqual(first.body.max_tokens, 64000);
 
-  await PROVIDERS.anthropic.impl.streamChat(cfg,
-    { model: 'claude-haiku-4-5', messages: [{ role: 'user', content: 'hi' }] }, () => {});
-  assert.strictEqual(requests[1].body.fallbacks, undefined);
-  assert.strictEqual(requests[1].headers['anthropic-beta'], undefined);
-  s.close();
+    await PROVIDERS.anthropic.impl.streamChat(cfg,
+      { model: 'claude-haiku-4-5', messages: [{ role: 'user', content: 'hi' }] }, () => {});
+    assert.strictEqual(requests[1].body.fallbacks, undefined);
+    assert.strictEqual(requests[1].headers['anthropic-beta'], undefined);
+  } finally {
+    s.close();
+  }
 });
 
 test('anthropic refusal is surfaced to the user', async () => {

@@ -12,7 +12,7 @@ its own license, and the Najwa AI License does not change or limit it.
 | [Capacitor](https://capacitorjs.com) (core, Android, iOS, App, Filesystem, Share) | Mobile app | MIT | © 2017-present Drifty Co. |
 | [marked](https://github.com/markedjs/marked) | Formatting replies | MIT | © 2018+ MarkedJS, © 2011-2018 Christopher Jeffrey |
 | [DOMPurify](https://github.com/cure53/DOMPurify) | Keeping formatted replies safe | Apache-2.0 or MPL-2.0 | © Cure53 and other contributors |
-| [Anthropic TypeScript SDK](https://github.com/anthropics/anthropic-sdk-typescript) | Connecting to Claude | MIT | © 2023 Anthropic, PBC |
+| [Anthropic TypeScript SDK](https://github.com/anthropics/anthropic-sdk-typescript) | Connecting to Claude | Apache-2.0 | © 2023 Anthropic, PBC |
 | [OpenCL Headers](https://github.com/KhronosGroup/OpenCL-Headers) | Building GPU support (Android) | Apache-2.0 | © 2008-2020 The Khronos Group Inc. |
 | [Google Play services Auth](https://developers.google.com/android/guides/overview) (`play-services-auth`) | Google sign-in for Drive sync (Android) | [Android Software Development Kit License](https://developer.android.com/studio/terms) | © Google LLC |
 | [Almarai](https://github.com/google/fonts/tree/main/ofl/almarai) (font, Regular and Bold) | Arabic text | SIL Open Font License 1.1 | © 2019 The Almarai Project Authors (https://github.com/JuergenWillrodt/Almarai) |
