@@ -475,3 +475,51 @@ test('the texts for watching a reply exist in English and Arabic', () => {
     for (const k of ['replyingOn', 'stopThere', 'stopFailed']) assert.match(Lease.text(k, 'Pixel', lang), /Pixel/);
   }
 });
+
+test('when the phone\'s copy has ended already, the computer stops its run and frees the chat', async () => {
+  const storage = await pcStorage();
+  const made = await storage.createChat({ title: 'Trip' });
+  // The phone gave up on its reply (an error, not "cut off"): its copy has ended.
+  await storage.saveChat({ ...made, messages: [{ id: 'q', role: 'user', content: 'Cheapest ticket?', createdAt: 1 },
+    { id: 'r1', role: 'assistant', content: 'Book', createdAt: 1000, error: 'Error: Couldn\'t reconnect' }] });
+  const { h } = hub(storage);
+  let stopped = false;
+  await assert.rejects(h.remoteChat(phoneRequest(made.id), { emit() {} }, (onDelta, signal) => new Promise((resolve, reject) => {
+    onDelta('Book early');
+    signal.addEventListener('abort', () => {
+      stopped = true;
+      const err = new Error('The operation was aborted.');
+      err.name = 'AbortError';
+      reject(err);
+    });
+    setTimeout(() => resolve({ text: 'never' }), 3000);
+  })), { name: 'AbortError' });
+  assert.ok(stopped, 'the run was stopped');
+  // The chat is free again at once (not held for an hour).
+  h.claim(made.id, { source: 'local', name: 'Desk' })();
+  // And the phone's ended copy is left as it was.
+  const m = await lastMessage(storage, made.id);
+  assert.strictEqual(m.content, 'Book');
+  assert.strictEqual(m.error, 'Error: Couldn\'t reconnect');
+});
+
+test('a save from the window keeps the newer stored copy of a reply written for a phone', async () => {
+  const storage = await pcStorage();
+  const made = await storage.createChat({ title: 'Trip' });
+  const q = { id: 'q', role: 'user', content: 'Cheapest ticket?', createdAt: 1 };
+  // What the computer wrote for the phone (finished), and the window's older copy (still writing).
+  await storage.saveChat({ ...made, messages: [q, { id: 'r1', role: 'assistant', content: 'Book early.', createdAt: 1000, mirrored: true }] });
+  const windowCopy = { ...made, title: 'Trip to Jeddah', messages: [q, { id: 'r1', role: 'assistant', content: 'Bo', createdAt: 1000, pending: true, owner: { deviceId: 'phone-1', name: 'Pixel', ts: 1 } },
+    { id: 'm2', role: 'assistant', content: 'mine', createdAt: 2000 }] };
+  await storage.saveChatOver(windowCopy, (stored, incoming) => Lease.keepNewerReplies(stored, incoming, 'desk'));
+  const saved = await storage.getChat(made.id);
+  assert.strictEqual(saved.title, 'Trip to Jeddah', 'the window\'s own changes are saved');
+  assert.strictEqual(saved.messages[1].content, 'Book early.');
+  assert.ok(!saved.messages[1].pending);
+  assert.strictEqual(saved.messages[2].content, 'mine');
+  // This computer's own reply: the window's copy always wins.
+  const own = { id: 'r3', role: 'assistant', content: 'long stored text', createdAt: 3000, pending: true, owner: { deviceId: 'desk', name: 'Desk', ts: 1 } };
+  const stored = { messages: [own] };
+  const incoming = { messages: [{ ...own, content: 'short' }] };
+  assert.strictEqual(Lease.keepNewerReplies(stored, incoming, 'desk').messages[0].content, 'short');
+});

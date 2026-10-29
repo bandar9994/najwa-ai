@@ -370,7 +370,7 @@ const remoteHandlers = {
     await checkShared(msg.provider);
     // One reply per chat (a second one is refused with a "busy" error), and
     // the reply is kept in this computer's copy of the chat too.
-    return whileAnswering(() => replies.remoteChat(msg, { emit, signal }, (onDelta) => runChat(msg.provider, msg.req || {}, onDelta, signal, (info) => emit({ t: 'info', info }))));
+    return whileAnswering(() => replies.remoteChat(msg, { emit, signal }, (onDelta, work) => runChat(msg.provider, msg.req || {}, onDelta, work || signal, (info) => emit({ t: 'info', info }))));
   },
   // The phone stays connected and is told when this computer has new data to sync.
   watch: (msg, ctx) => replies.watch(msg, ctx),
@@ -506,7 +506,12 @@ function registerIpc() {
   ipcMain.handle('chats:recall', (_e, q, opts) => storage.recall(q, opts));
   ipcMain.handle('chats:get', (_e, id) => storage.getChat(id));
   ipcMain.handle('chats:create', (_e, init) => storage.createChat(init));
-  ipcMain.handle('chats:save', (_e, chat) => storage.saveChat(chat));
+  // The window's copy may be behind a phone's reply this computer is writing
+  // into the same chat (src/reply-hub.js): that reply's newer stored copy stays.
+  ipcMain.handle('chats:save', async (_e, chat) => {
+    const here = await computerId();
+    return storage.saveChatOver(chat, (stored, incoming) => Lease.keepNewerReplies(stored, incoming, here));
+  });
   ipcMain.handle('chats:delete', (_e, id) => storage.deleteChat(id));
 
   ipcMain.handle('settings:get', () => storage.getSettings());
@@ -720,11 +725,11 @@ app.whenReady().then(async () => {
   });
 
   sync.run();
-  // Every 20 s while the window is open (or a phone may be watching), so a
-  // reply written on the phone shows up here soon; once a minute otherwise.
+  // Every 20 s while the window is open or a phone is connected (watching), so
+  // a reply written on the phone shows up here soon; once a minute otherwise.
   let quietTicks = 0;
   setInterval(() => {
-    const active = (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && !mainWindow.isMinimized()) || !!remote;
+    const active = (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && !mainWindow.isMinimized()) || (!!remote && !!replies && replies.watching() > 0);
     if (active || ++quietTicks >= 3) {
       quietTicks = 0;
       sync.run();

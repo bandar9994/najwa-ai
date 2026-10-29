@@ -1330,7 +1330,9 @@ function drawQueued() {
         const at = now.indexOf(q);
         if (at < 0) return;
         now.splice(at, 1);
-        if (!now.length) queued.delete(S.current);
+        // (set/delete also write the queue to disk, so it stays removed after a restart)
+        if (now.length) queued.set(S.current, now);
+        else queued.delete(S.current);
         drawQueued();
         updateSendButton();
       }
@@ -2179,6 +2181,11 @@ async function send() {
   {
     const chat = S.current;
     if (chat && !isStreaming(chat) && (replyElsewhere(chat) || (queued.get(chat) || []).length)) {
+      // Nothing could ever send it: say so, and keep it in the box.
+      if (!chatModel(chat)) {
+        toast('Choose a model first (top right).');
+        return;
+      }
       pictures = [];
       drawPictures();
       el.input.value = '';
@@ -2597,6 +2604,24 @@ async function onSyncEvent(evt) {
 // the same messages (for example another device is writing a reply, and its
 // text has grown) only the messages that changed are redrawn, in place, so the
 // reader keeps their place, their selection and the sections they opened.
+// Whether two copies of a message are the same, without turning pictures (big
+// data: URLs) into JSON each time: lists of text are compared item by item.
+function sameMessage(a, b, skip = []) {
+  if (a === b) return true;
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const k of keys) {
+    if (skip.includes(k) || a[k] === b[k]) continue;
+    const x = a[k];
+    const y = b[k];
+    if (Array.isArray(x) && Array.isArray(y) && x.every((v) => typeof v === 'string') && y.every((v) => typeof v === 'string')) {
+      if (x.length !== y.length || x.some((v, i) => v !== y[i])) return false;
+      continue;
+    }
+    if (x === null || y === null || typeof x !== 'object' || typeof y !== 'object' || JSON.stringify(x) !== JSON.stringify(y)) return false;
+  }
+  return true;
+}
+
 function adoptOpenChat(fresh) {
   const old = S.current;
   const stick = nearBottom();
@@ -2614,10 +2639,10 @@ function adoptOpenChat(fresh) {
   } else {
     fresh.messages.forEach((m, i) => {
       const before = old.messages[i];
-      if (JSON.stringify(m) === JSON.stringify(before)) return;
+      if (sameMessage(m, before)) return;
       const node = el.messages.querySelector(`.msg[data-id="${m.id}"]`);
       if (!node) return;
-      const onlyText = m.pending && before.pending && JSON.stringify({ ...m, content: null, owner: null }) === JSON.stringify({ ...before, content: null, owner: null });
+      const onlyText = m.pending && before.pending && sameMessage(m, before, ['content', 'owner']);
       if (onlyText) fillContent(node.querySelector('.content'), m);
       else node.replaceWith(renderMessage(fresh, m, i));
     });

@@ -23,11 +23,11 @@
 'use strict';
 
 const Lease = require('./lease');
+// Why a reply is stopped, as the abort signal's reason.
+const { STOPPED } = require('./remote-server');
 
 const MAX_WATCHERS = 16;
-const INTERRUPTED = 'This reply was interrupted.';
-// Why a reply is stopped, as the abort signal's reason (see remote-server.js).
-const STOPPED = 'stopped';
+const INTERRUPTED = Lease.INTERRUPTED_ERROR;
 
 function busyError(who, here) {
   const where = who && who.source !== 'local' && who.name ? who.name : here;
@@ -86,7 +86,9 @@ function createReplyHub({ storage, name = () => 'this computer', notify = () => 
   }
 
   // Writes the reply as it comes: begin() -> delta(text)... -> finish(...).
-  function mirror(t) {
+  // onOver() is called once if the phone's copy turns out to have ended
+  // already (the phone gave up on it, or it was stopped there).
+  function mirror(t, { onOver = () => {} } = {}) {
     let text = '';
     let dirty = false;
     let timer = null;
@@ -113,7 +115,11 @@ function createReplyHub({ storage, name = () => 'this computer', notify = () => 
           if (m.error === INTERRUPTED) delete m.error;
           if (m.notice === Lease.INTERRUPTED_NOTICE) delete m.notice;
         } else if (!m.pending) {
-          over = true;  // finished on the phone meanwhile
+          // finished on the phone meanwhile
+          if (!over) {
+            over = true;
+            onOver();
+          }
           return false;
         } else if (m.owner && m.owner.deviceId !== t.deviceId) {
           return false; // someone else's reply under that id: never touch
@@ -231,12 +237,19 @@ function createReplyHub({ storage, name = () => 'this computer', notify = () => 
 
   // Runs a chat request from the phone: claims the chat, mirrors the reply into
   // this computer's copy of the chat (when the phone says which), and releases.
-  // run(onDelta) does the work and returns what the model returned.
+  // run(onDelta, signal) does the work and returns what the model returned; it
+  // is stopped (through that signal) when the phone's copy of the reply has
+  // ended already, so the model doesn't write on, and hold the chat, for no one.
   async function remoteChat(msg, { emit, signal }, run) {
     const chatId = typeof msg.chatId === 'string' ? msg.chatId : msg.req && typeof msg.req.chatId === 'string' ? msg.req.chatId : null;
     const release = claim(chatId, { source: 'phone', deviceId: typeof msg.deviceId === 'string' ? msg.deviceId : null, name: typeof msg.deviceName === 'string' && msg.deviceName ? msg.deviceName : 'your phone' });
     const t = target(msg);
-    const copy = t ? mirror(t) : null;
+    const work = new AbortController();
+    if (signal) {
+      if (signal.aborted) work.abort(signal.reason);
+      else signal.addEventListener('abort', () => work.abort(signal.reason), { once: true });
+    }
+    const copy = t ? mirror(t, { onOver: () => work.abort(STOPPED) }) : null;
     let result = null;
     let error = null;
     let aborted = false;
@@ -244,7 +257,7 @@ function createReplyHub({ storage, name = () => 'this computer', notify = () => 
       result = await run((text) => {
         if (copy) copy.delta(text);
         emit({ t: 'delta', text });
-      });
+      }, work.signal);
       return result;
     } catch (err) {
       error = err;

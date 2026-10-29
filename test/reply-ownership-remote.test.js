@@ -287,3 +287,27 @@ test('Stop pressed on the computer for a reply the phone asked for stops it as a
     await pc.server.close();
   }
 });
+
+test('a computer linked while the phone watches is watched too, and one unlinked is let go', async () => {
+  const key = syncKey();
+  const desk = await computer(key);
+  const laptop = await computer(key);
+  try {
+    const linked = { desk: desk.addr };
+    const p = remoteComputers({ getKey: async () => key, getComputers: async () => ({ ...linked }) });
+    const controller = new AbortController();
+    const watching = p.watch({ onChanged() {}, signal: controller.signal, deviceId: 'phone-1', refreshMs: 50 });
+    for (let i = 0; i < 100 && desk.hub.watching() === 0; i++) await sleep(20);
+    assert.strictEqual(desk.hub.watching(), 1);
+    assert.strictEqual(laptop.hub.watching(), 0);
+    // Linked meanwhile.
+    linked.laptop = { ...laptop.addr, id: 'laptop', name: 'Laptop' };
+    for (let i = 0; i < 100 && laptop.hub.watching() === 0; i++) await sleep(20);
+    assert.strictEqual(laptop.hub.watching(), 1);
+    controller.abort();
+    await watching;
+  } finally {
+    await desk.server.close();
+    await laptop.server.close();
+  }
+});

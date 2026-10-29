@@ -365,17 +365,22 @@ function remoteComputers({ getKey, getComputers, fetch = globalThis.fetch, probe
   // the synced copy, so the phone can sync right away. Runs until `signal`
   // aborts; reconnects by itself (slowing down while a computer can't be
   // reached) and leaves a computer alone that doesn't know "watch" (older
-  // versions of the desktop app).
-  async function watch({ onChanged, signal, deviceId, pauseMs = 2000, maxPauseMs = 60000 }) {
+  // versions of the desktop app). The list of computers is read again every
+  // `refreshMs`, so one linked meanwhile is watched too, and one unlinked is let go.
+  async function watch({ onChanged, signal, deviceId, pauseMs = 2000, maxPauseMs = 60000, refreshMs = 60000 }) {
     let list;
     try {
       list = await computers();
     } catch {
       return;
     }
-    const one = async (computer) => {
+    const current = new Map(list.map((c) => [c.id, c]));
+    const running = new Map();   // computer id -> its loop
+    const older = new Set();     // computers that don't know "watch"
+    const one = async (id) => {
       let wait = pauseMs;
-      while (!signal.aborted) {
+      while (!signal.aborted && current.has(id)) {
+        const computer = current.get(id);
         let up = false;
         try {
           const url = await locate(computer);
@@ -388,7 +393,10 @@ function remoteComputers({ getKey, getComputers, fetch = globalThis.fetch, probe
           });
         } catch (err) {
           if (signal.aborted) return;
-          if (err.message === 'error 400') return;  // an older computer: no push, the phone polls
+          if (err.message === 'error 400') {   // an older computer: no push, the phone polls
+            older.add(id);
+            return;
+          }
         }
         wait = up ? pauseMs : Math.min(wait * 2, maxPauseMs);
         try {
@@ -398,7 +406,35 @@ function remoteComputers({ getKey, getComputers, fetch = globalThis.fetch, probe
         }
       }
     };
-    await Promise.all(list.map(one));
+    const start = () => {
+      for (const id of current.keys()) {
+        if (!running.has(id) && !older.has(id)) running.set(id, one(id).finally(() => running.delete(id)));
+      }
+    };
+    start();
+    // Until stopped, or nothing is left to watch (all older or unlinked).
+    while (!signal.aborted && running.size) {
+      const tick = new AbortController();
+      const stop = () => tick.abort();
+      signal.addEventListener('abort', stop, { once: true });
+      const ended = await Promise.race([
+        Promise.all([...running.values()]).then(() => true),
+        pause(refreshMs, tick.signal).then(() => false, () => true)
+      ]);
+      tick.abort();
+      signal.removeEventListener('abort', stop);
+      if (ended || signal.aborted) break;
+      let fresh = [];
+      try {
+        fresh = await computers();
+      } catch {
+        // none any more
+      }
+      current.clear();
+      for (const c of fresh) current.set(c.id, c);
+      start();
+    }
+    await Promise.all([...running.values()]);
   }
 
   return { listModels, streamChat, approve, answerOn, locate, call, watch };
