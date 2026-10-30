@@ -317,7 +317,7 @@ test('a computer linked while the phone watches is watched too, and one unlinked
 
 test('a phone that can\'t get the computer back leaves the reply to it (no error), and the computer finishes it', async () => {
   const key = syncKey();
-  const pc = await computer(key, { words: ['Book', ' early', ' for', ' less.'], delay: 60 });
+  const pc = await computer(key, { words: ['Book', ' early', ' for', ' less.'], delay: 150 });
   try {
     const id = await chatOn(pc, []);
     // The phone's network: once `lost`, nothing gets through (another Wi-Fi), and the open reply is cut.
@@ -331,8 +331,8 @@ test('a phone that can\'t get the computer back leaves the reply to it (no error
       const reader = res.body.getReader();
       const body = new ReadableStream({
         async pull(ctrl) {
-          const r = await Promise.race([reader.read(), gone.then(() => null)]);
-          if (r === null) {
+          const r = lost ? null : await Promise.race([reader.read(), gone.then(() => null)]);
+          if (r === null || lost) {
             reader.cancel().catch(() => {});
             ctrl.error(new TypeError('The network connection was lost.'));
           } else if (r.done) ctrl.close();
@@ -341,16 +341,19 @@ test('a phone that can\'t get the computer back leaves the reply to it (no error
       });
       return new Response(body, { status: res.status, headers: res.headers });
     };
-    const p = remoteComputers({ getKey: async () => key, getComputers: async () => ({ desk: pc.addr }), fetch: net, resumeMs: 400, probeMs: 100 });
+    const p = remoteComputers({ getKey: async () => key, getComputers: async () => ({ desk: pc.addr }), fetch: net, resumeMs: 400 });
     let got = '';
     const asking = p.streamChat({}, {
       model: 'qwen (Desk)', messages: [{ role: 'user', content: 'hi' }], chatId: id, device: { id: 'phone-1', name: 'Pixel' },
       reply: { id: 'r1', at: Date.now(), model: { provider: 'ollama', model: 'qwen' } }
-    }, (d) => { got += d; });
-    // After the first words the phone loses the computer (another Wi-Fi): its address no longer answers.
-    for (let i = 0; i < 100 && !got; i++) await sleep(20);
-    lost = true;
-    markLost();
+    }, (d) => {
+      got += d;
+      // After the first words the phone loses the computer (another Wi-Fi): at once, whatever the machine's speed.
+      if (!lost) {
+        lost = true;
+        markLost();
+      }
+    });
     await assert.rejects(asking, (err) => err.code === 'elsewhere' && /Desk is finishing this reply/.test(err.message));
     // The computer finished it anyway, in its own copy (synced to the phone from there).
     for (let i = 0; i < 100 && (await pc.storage.getChat(id)).messages[1].pending; i++) await sleep(30);
