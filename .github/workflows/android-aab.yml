@@ -4,6 +4,12 @@ name: Android app bundle (Google Play)
 # Actions tab, or push a tag like android-v1.0.0. Needs the signing secrets
 # BALIMDA_KEYSTORE_BASE64, BALIMDA_KEYSTORE_PASSWORD, BALIMDA_KEY_ALIAS and
 # BALIMDA_KEY_PASSWORD (your private upload key). It never uses the test key.
+#
+# Run by hand, it also uploads the bundle to Google Play (the track you pick,
+# Internal testing by default) when the PLAY_SERVICE_ACCOUNT_JSON secret is
+# set: a Google Cloud service account's JSON key, invited in the Play Console
+# (Users and permissions) with permission to release. Without it, download the
+# bundle from the run's Artifacts and upload it in the Play Console.
 on:
   workflow_dispatch:
     inputs:
@@ -11,6 +17,15 @@ on:
         description: 'Number added to the run number to make the Play versionCode (use it to go above a versionCode already uploaded)'
         required: false
         default: '0'
+      track:
+        description: 'Google Play track to upload to'
+        type: choice
+        options: ['internal', 'alpha', 'beta', 'production']
+        default: 'internal'
+      release_notes:
+        description: "What's new (shown on Google Play, up to 500 characters)"
+        required: false
+        default: ''
   push:
     tags: ['android-v*']
 
@@ -26,6 +41,7 @@ jobs:
       BALIMDA_KEY_PASSWORD: ${{ secrets.BALIMDA_KEY_PASSWORD }}
       VERSION_CODE_OFFSET: ${{ inputs.version_code_offset || '0' }}
       NAJWA_STORE: play
+      PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
     steps:
       - name: Check the signing secrets are set
         run: |
@@ -85,3 +101,14 @@ jobs:
           name: Najwa-AI-android-aab
           path: Najwa-AI-android.aab
           if-no-files-found: error
+      - name: Upload to Google Play
+        if: github.event_name == 'workflow_dispatch' && env.PLAY_SERVICE_ACCOUNT_JSON != ''
+        env:
+          TRACK: ${{ inputs.track || 'internal' }}
+          NOTES: ${{ inputs.release_notes }}
+        run: |
+          node scripts/play-upload.mjs --aab Najwa-AI-android.aab --package com.bandaraltariqi.najwa --track "$TRACK" --notes "$NOTES"
+          echo "**Google Play**: uploaded to the \`$TRACK\` track" >> "$GITHUB_STEP_SUMMARY"
+      - name: Google Play upload skipped
+        if: github.event_name == 'workflow_dispatch' && env.PLAY_SERVICE_ACCOUNT_JSON == ''
+        run: echo "::notice title=Not uploaded to Google Play::Add the PLAY_SERVICE_ACCOUNT_JSON secret to upload automatically. Meanwhile download the bundle from this run's Artifacts and upload it in the Play Console."
