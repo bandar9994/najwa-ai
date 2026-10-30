@@ -374,6 +374,11 @@ const remoteHandlers = {
   },
   // The phone stays connected and is told when this computer has new data to sync.
   watch: (msg, ctx) => replies.watch(msg, ctx),
+  // The phone has just put new data in the synced copy: sync now.
+  pushed: async () => {
+    sync.run().catch(() => {});
+    return true;
+  },
   // The phone answering an agent's request for permission.
   approve: async (msg) => {
     // A connector's question this computer asked, answered from the phone.

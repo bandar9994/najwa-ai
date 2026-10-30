@@ -43,7 +43,10 @@ async function computer(key, { newHandlers = true, words = ['Book', ' early', ' 
     models: async () => [{ provider: 'ollama', label: 'Ollama', short: 'Ollama', models: ['qwen'] }],
     chat: async (msg, ctx) => hub.remoteChat(msg, ctx, run(msg, ctx))
   };
-  if (newHandlers) handlers.watch = (msg, ctx) => hub.watch(msg, ctx);
+  if (newHandlers) {
+    handlers.watch = (msg, ctx) => hub.watch(msg, ctx);
+    handlers.pushed = async () => { log.pushed = (log.pushed || 0) + 1; return true; };
+  }
   const server = await startRemoteServer({ port: 0, host: '127.0.0.1', getKey: async () => linkKey(key), handlers, ...serverOptions });
   return { server, storage, hub, log, addr: { id: 'desk', name: 'Desk', addrs: ['127.0.0.1'], port: server.port, enabled: true } };
 }
@@ -309,5 +312,68 @@ test('a computer linked while the phone watches is watched too, and one unlinked
   } finally {
     await desk.server.close();
     await laptop.server.close();
+  }
+});
+
+test('a phone that can\'t get the computer back leaves the reply to it (no error), and the computer finishes it', async () => {
+  const key = syncKey();
+  const pc = await computer(key, { words: ['Book', ' early', ' for', ' less.'], delay: 60 });
+  try {
+    const id = await chatOn(pc, []);
+    // The phone's network: once `lost`, nothing gets through (another Wi-Fi), and the open reply is cut.
+    let lost = false;
+    let markLost;
+    const gone = new Promise((r) => { markLost = r; });
+    const net = async (url, opts = {}) => {
+      if (lost) throw new TypeError('fetch failed');
+      const res = await globalThis.fetch(url, opts);
+      if (!res.body) return res;
+      const reader = res.body.getReader();
+      const body = new ReadableStream({
+        async pull(ctrl) {
+          const r = await Promise.race([reader.read(), gone.then(() => null)]);
+          if (r === null) {
+            reader.cancel().catch(() => {});
+            ctrl.error(new TypeError('The network connection was lost.'));
+          } else if (r.done) ctrl.close();
+          else ctrl.enqueue(r.value);
+        }
+      });
+      return new Response(body, { status: res.status, headers: res.headers });
+    };
+    const p = remoteComputers({ getKey: async () => key, getComputers: async () => ({ desk: pc.addr }), fetch: net, resumeMs: 400, probeMs: 100 });
+    let got = '';
+    const asking = p.streamChat({}, {
+      model: 'qwen (Desk)', messages: [{ role: 'user', content: 'hi' }], chatId: id, device: { id: 'phone-1', name: 'Pixel' },
+      reply: { id: 'r1', at: Date.now(), model: { provider: 'ollama', model: 'qwen' } }
+    }, (d) => { got += d; });
+    // After the first words the phone loses the computer (another Wi-Fi): its address no longer answers.
+    for (let i = 0; i < 100 && !got; i++) await sleep(20);
+    lost = true;
+    markLost();
+    await assert.rejects(asking, (err) => err.code === 'elsewhere' && /Desk is finishing this reply/.test(err.message));
+    // The computer finished it anyway, in its own copy (synced to the phone from there).
+    for (let i = 0; i < 100 && (await pc.storage.getChat(id)).messages[1].pending; i++) await sleep(30);
+    const m = (await pc.storage.getChat(id)).messages[1];
+    assert.strictEqual(m.content, 'Book early for less.');
+    assert.ok(!m.pending && !m.error && !m.interrupted);
+  } finally {
+    await pc.server.close();
+  }
+});
+
+test('after the phone puts new data in the synced copy, it tells the computers, which sync at once (older ones just look later)', async () => {
+  const key = syncKey();
+  const pc = await computer(key);
+  const old = await computer(key, { newHandlers: false });
+  try {
+    const p = remoteComputers({ getKey: async () => key, getComputers: async () => ({ desk: pc.addr, old: { ...old.addr, id: 'old', name: 'Old' } }) });
+    assert.strictEqual(await p.pushed(), 1);
+    assert.strictEqual(pc.log.pushed, 1);
+    // No computer linked: nothing to tell.
+    assert.strictEqual(await remoteComputers({ getKey: async () => key, getComputers: async () => ({}) }).pushed(), 0);
+  } finally {
+    await pc.server.close();
+    await old.server.close();
   }
 });

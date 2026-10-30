@@ -146,6 +146,8 @@ const syncReady = ready.then(async (storage) => {
     googleAuth: (await googleAuthAvailable()) ? nativeGoogleAuth() : null,
     onEvent: (evt) => {
       for (const cb of syncListeners) cb(evt);
+      // New data from this phone: the computers sync at once (see remote.js).
+      if (evt.type === 'pushed') computers.pushed().catch(() => {});
     }
   });
   await sync.load();
@@ -452,7 +454,7 @@ window.balimda = {
         if (err instanceof TypeError && !err.explained && /fetch|network|load failed/i.test(message)) {
           message = `Couldn't reach the server (${message}). Check the address in Settings, and that the server allows connections from other devices.`;
         }
-        return { ok: false, error: message, ...(err.code === 'busy' ? { code: 'busy' } : {}) };
+        return { ok: false, error: message, ...(err.code === 'busy' || err.code === 'elsewhere' ? { code: err.code } : {}) };
       } finally {
         active.delete(req.requestId);
         steering.delete(req.requestId);

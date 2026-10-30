@@ -533,9 +533,23 @@ function modelAvailable(m) {
 // The model a chat uses on this device: this device's own choice for the
 // chat, else the chat's latest model, the assistant's model or this device's
 // default -- whichever this device can actually run.
+// A computer's own model (say its Hermes Agent) as this phone reaches it,
+// through "On your computer": "hermes-agent (Desk, Hermes Agent)".
+function viaComputer(m) {
+  if (!m || !m.model || m.provider === 'computer') return null;
+  const name = (S.models.computer || []).find((n) => typeof n === 'string' && n.startsWith(`${m.model} (`));
+  return name ? { provider: 'computer', model: name } : null;
+}
+
+// The chat goes on where its last reply was written: when that was a
+// computer's own model, which this device can't run itself, it is used
+// through that computer, so the work stays there (and goes on when this
+// phone is closed) instead of moving to a model on the phone. A model picked
+// at the top still wins (it becomes the chat's model).
 function chatModel(chat) {
   const assistant = getAssistant(chat.assistantId);
-  return [(chat.models || {})[S.state.deviceId], chat.model, assistant.model, S.settings.defaultModel].find(modelAvailable) || null;
+  const last = chat.model && !modelAvailable(chat.model) ? viaComputer(chat.model) : null;
+  return [last, (chat.models || {})[S.state.deviceId], chat.model, assistant.model, S.settings.defaultModel].find(modelAvailable) || null;
 }
 
 function useModel(chat, model) {
@@ -553,6 +567,10 @@ function modelNote(chat, model) {
     if (wanted.provider === 'onDevice') return `${displayModel(wanted.model)} isn't on this phone any more. Download it again in Settings → Models & providers, or pick another model at the top.`;
     if (wanted.provider === 'computer') return `${displayModel(wanted.model)} isn't available right now. Check that the computer is on with Najwa AI open and on the same Wi-Fi, or pick another model at the top.`;
     return `${displayModel(wanted.model)} isn't available right now. Check that ${providerLabel(wanted.provider)} is running, or pick another model at the top.`;
+  }
+  // Following the last reply to the computer that wrote it.
+  if (chat.model && sameModel(viaComputer(chat.model), model)) {
+    return `Continuing with ${displayModel(model.model)}, where the last reply was written.`;
   }
   if (mine && !sameModel(mine, model)) {
     return `${displayModel(mine.model)} isn't available right now, so this chat is using ${displayModel(model.model)}.`;
@@ -2344,6 +2362,21 @@ async function runCompletion(chat, entry) {
     await saveChatNow(chat);
     if (S.current === chat) renderChat();
     updateComposer();
+    return;
+  }
+  // The phone lost the computer that writes this reply, but the computer
+  // finishes it without the phone: it stays "Replying on <computer>…" (its
+  // lease, kept fresh by the computer, says whether it still is) and the rest
+  // arrives by sync. Not an error, and not cut off.
+  if (!res.ok && res.code === 'elsewhere') {
+    delete msg.waiting;
+    delete msg.agentStatus;
+    Lease.touch(msg);
+    chat.updatedAt = Date.now();
+    await saveChatNow(chat);
+    if (S.current === chat) renderChat();
+    updateComposer();
+    if (S.current === chat) toast(res.error, 5000);
     return;
   }
   // On a computer, "finished" can arrive before the last bits of text (they

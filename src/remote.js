@@ -278,6 +278,11 @@ function remoteComputers({ getKey, getComputers, fetch = globalThis.fetch, probe
       ...(reply && reply.id ? { reply } : {})
     };
     const send = (u) => call(u, 'chat', { provider: target.provider, req: { ...plain, model: target.model }, job, from: got, ...about }, { signal, onEvent });
+    // The computer keeps this reply in its own copy of the chat and finishes it
+    // without the phone (see reply-hub.js): if the phone can't get it back,
+    // it's left to the computer and arrives by sync, instead of an error.
+    const kept = !!(about.chatId && about.deviceId && about.reply);
+    const leftThere = () => Object.assign(new RemoteError(`${name} is finishing this reply. It will show here when it's done.`), { code: 'elsewhere' });
     // Stop: the computer stops writing too (it would otherwise wait a few
     // minutes for the phone to come back).
     const cancel = () => {
@@ -325,6 +330,7 @@ function remoteComputers({ getKey, getComputers, fetch = globalThis.fetch, probe
           } catch (err) {
             if (signal && signal.aborted) throw err;
             if (err.code === 'gone') {
+              if (kept) throw leftThere();
               throw new RemoteError(`${name} no longer has this reply (Najwa AI was restarted there, or the connection was lost for too long). The reply so far is kept: tap Regenerate to try again.`);
             }
             if (err.fromComputer) throw err;
@@ -337,6 +343,7 @@ function remoteComputers({ getKey, getComputers, fetch = globalThis.fetch, probe
       } finally {
         onInfo({ kind: 'status', text: '' });
       }
+      if (kept) throw leftThere();
       throw new RemoteError(`Couldn't reconnect to ${name} to finish the reply (${last.message}). Check that it's on with Najwa AI open and on the same Wi-Fi. The reply so far is kept: tap Regenerate to try again.`);
     }
   }
@@ -437,7 +444,29 @@ function remoteComputers({ getKey, getComputers, fetch = globalThis.fetch, probe
     await Promise.all([...running.values()]);
   }
 
-  return { listModels, streamChat, approve, answerOn, locate, call, watch };
+  // This phone has just put new data in the synced copy: tell the computers,
+  // so they sync now instead of at their next look (up to 20 s later). The
+  // other way round, computers tell a watching phone (watch). Older computers
+  // don't know "pushed" and simply look as before.
+  async function pushed() {
+    let list;
+    try {
+      list = await computers();
+    } catch {
+      return 0;
+    }
+    const told = await Promise.all(list.map(async (c) => {
+      try {
+        await call(await locate(c), 'pushed', {}, { timeoutMs: 5000 });
+        return 1;
+      } catch {
+        return 0;
+      }
+    }));
+    return told.reduce((a, b) => a + b, 0);
+  }
+
+  return { listModels, streamChat, approve, answerOn, locate, call, watch, pushed };
 }
 
 module.exports = { PORT, PATH, MAX_SKEW_MS, RemoteError, linkKey, lock, unlock, lines, remoteComputers, modelName };
