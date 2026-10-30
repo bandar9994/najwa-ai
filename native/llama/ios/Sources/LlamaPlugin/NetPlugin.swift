@@ -27,7 +27,8 @@ public class NetPlugin: CAPPlugin, CAPBridgedPlugin, URLSessionDataDelegate {
     public let jsName = "Net"
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "request", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "cancel", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "cancel", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "replying", returnType: CAPPluginReturnPromise)
     ]
 
     private struct Running {
@@ -126,9 +127,22 @@ public class NetPlugin: CAPPlugin, CAPBridgedPlugin, URLSessionDataDelegate {
         }
     }
 
-    // Extra time in the background while any request is running (called on `queue`).
+    // A reply is being written (any model, not only requests made here).
+    private var replyRunning = false
+
+    /// replying({on}): ask for the extra background time while a reply is written.
+    @objc func replying(_ call: CAPPluginCall) {
+        let on = call.getBool("on") ?? false
+        queue.addOperation {
+            self.replyRunning = on
+            self.updateBackgroundTime()
+        }
+        call.resolve()
+    }
+
+    // Extra time in the background while any request or reply is running (called on `queue`).
     private func updateBackgroundTime() {
-        let busy = !running.isEmpty
+        let busy = !running.isEmpty || replyRunning
         DispatchQueue.main.async {
             if busy && self.backgroundTime == .invalid {
                 self.backgroundTime = UIApplication.shared.beginBackgroundTask(withName: "Najwa AI reply") {

@@ -172,7 +172,25 @@ const computers = remoteComputers({
 // The phone's own network code, for requests the web view can't make: Hermes
 // refuses the web view's requests unless its API_SERVER_CORS_ORIGINS lists the
 // app, and other websites (for "Read links") don't allow the app's page at all.
-const nativeFetch = isNative && Capacitor.isPluginAvailable('Net') ? makeNativeFetch(registerPlugin('Net')) : null;
+const NetPlugin = isNative && Capacitor.isPluginAvailable('Net') ? registerPlugin('Net') : null;
+const nativeFetch = NetPlugin ? makeNativeFetch(NetPlugin) : null;
+
+// While a reply is written, the app keeps going in the background: Android
+// with a foreground service (a notification), iPhone with the extra time it
+// allows. Otherwise leaving the app cuts the reply's connection off.
+let repliesRunning = 0;
+function replyRunning(delta) {
+  const before = repliesRunning;
+  repliesRunning = Math.max(0, repliesRunning + delta);
+  if (!NetPlugin || !before === !repliesRunning) return;
+  Promise.resolve(NetPlugin.replying({ on: repliesRunning > 0 })).catch(() => {});  // (older app: no such method)
+}
+// When the app last went to the background, to tell a reply cut off by that
+// from one that failed.
+let hiddenAt = 0;
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') hiddenAt = Date.now();
+});
 const hermes = nativeFetch ? { ...PROVIDERS.hermes, impl: hermesProvider(nativeFetch) } : PROVIDERS.hermes;
 
 // The browser for models: a hidden web view of the app's own (search, open,
@@ -382,6 +400,8 @@ window.balimda = {
       active.set(req.requestId, controller);
       const steer = { send: null };
       steering.set(req.requestId, steer);
+      const startedAt = Date.now();
+      if (!req.background) replyRunning(1);
       try {
         const request = {
           model: req.model,
@@ -396,7 +416,10 @@ window.balimda = {
           browse: !!req.browse,
           connectors: !!req.connectors,
           chatId: req.chatId,
-          steering: steer
+          steering: steer,
+          // Hermes: follow a run that is already going (a reply cut off when
+          // the app was closed) instead of starting one.
+          ...(req.resumeRun ? { resumeRun: String(req.resumeRun) } : {})
         };
         if (req.provider === 'computer') {
           // For the computer: who is asking and which message this reply is,
@@ -451,11 +474,18 @@ window.balimda = {
       } catch (err) {
         if (controller.signal.aborted) return { ok: true, aborted: true };
         let message = err.message || String(err);
-        if (err instanceof TypeError && !err.explained && /fetch|network|load failed/i.test(message)) {
+        const network = err instanceof TypeError && !err.explained && /fetch|network|load failed|connection/i.test(message);
+        // The app went to the background while it was writing, and that cut
+        // the connection: the app finishes the reply when you come back.
+        if (network && hiddenAt >= startedAt) {
+          return { ok: false, code: 'cutOff', error: 'The connection was lost while Najwa AI was in the background.' };
+        }
+        if (network) {
           message = `Couldn't reach the server (${message}). Check the address in Settings, and that the server allows connections from other devices.`;
         }
         return { ok: false, error: message, ...(err.code === 'busy' || err.code === 'elsewhere' ? { code: err.code } : {}) };
       } finally {
+        if (!req.background) replyRunning(-1);
         active.delete(req.requestId);
         steering.delete(req.requestId);
       }

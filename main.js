@@ -297,7 +297,8 @@ async function runChat(providerId, req, onDelta, signal, onInfo) {
     temperature: req.temperature,
     maxTokens: req.maxTokens,
     think: req.think,
-    steering: req.steering
+    steering: req.steering,
+    ...(req.resumeRun ? { resumeRun: String(req.resumeRun) } : {})
   };
   // Tools for models that can use them (also for the phone, when it uses this
   // computer's models): "Let models use a browser" (this computer's hidden

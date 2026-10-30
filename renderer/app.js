@@ -482,6 +482,8 @@ async function loadModels() {
   renderSelectors();
   updateComposer();
   if (!S.current) renderChat();
+  // A cut-off reply waits for its model.
+  autoResumeSoon();
 }
 
 function allModels() {
@@ -1001,6 +1003,9 @@ function agentEvent(chat, msg, evt) {
   } else if (evt.kind === 'shot' && /^data:image\//.test(evt.src || '')) {
     // What the model saw in the browser (a few, to keep the chat small).
     msg.shots = [...(msg.shots || []), { src: evt.src, label: String(evt.label || '').slice(0, 120) }].slice(-3);
+  } else if (evt.kind === 'run' && evt.runId) {
+    // The Hermes run writing this reply: followed again if the app is closed meanwhile.
+    msg.run = String(evt.runId);
   } else if (evt.kind === 'replace' && typeof evt.text === 'string') {
     // Part of the reply was missed (the connection dropped for a long time): the finished answer.
     msg.content = evt.text;
@@ -1783,9 +1788,74 @@ async function readChat(id) {
   // before owners existed) are always cut off, as they were.
   const now = Date.now();
   for (const m of chat.messages) {
-    if (m.pending && !watchedReply(m, now)) Lease.interrupt(m);
+    if (m.pending && !watchedReply(m, now)) {
+      // This device was writing it when the app was closed: finished later
+      // (autoResume). Not one a computer writes for this phone: the computer
+      // finishes that itself, and it arrives by sync.
+      const mine = !!m.owner && m.owner.deviceId === myDeviceId() && !(m.model && m.model.provider === 'computer');
+      Lease.interrupt(m);
+      if (mine) markCutOff(chat, m);
+    }
+    if (m.cutOff && m.cutOff === myDeviceId()) cutOffHere.set(m.id, chat.id);
   }
   return chat;
+}
+
+// ---- finishing replies that were cut off on this device ------------------------
+// When the app is closed while it writes a reply (or the phone cuts the
+// connection in the background), the reply is finished by itself once the app
+// is back and its model is there: a Hermes run is followed again, any other
+// model carries on from where the text stopped. A few times at most.
+
+const MAX_RESUMES = 3;
+const cutOffHere = new Map();  // message id -> chat id
+const CONTINUE_ASK = 'Your reply above was cut off before it was finished (the app was closed). Continue it from exactly where it stopped: start with the very next characters, even in the middle of a word, and don\'t repeat anything or mention that it was cut off.';
+
+function markCutOff(chat, msg) {
+  msg.cutOff = myDeviceId();
+  msg.interrupted = true;
+  msg.notice = (msg.resumes || 0) >= MAX_RESUMES
+    ? 'This reply was cut off several times. Tap Regenerate to ask again.'
+    : 'This reply was cut off when the app was closed or in the background. It is finished when you come back.';
+  delete msg.error;
+  cutOffHere.set(msg.id, chat.id);
+}
+
+// The model's new text without its thinking (that goes after the text so far).
+function continuationText(raw) {
+  const s = splitThinking(raw);
+  if (s.thinking == null) return raw;
+  return s.done ? s.answer.replace(/^\s+/, '') : '';
+}
+
+// Finishes the chat's cut-off reply if it can now: the app is on screen, the
+// chat is free, the reply is the chat's last message, and its model is here.
+function autoResume(chat) {
+  if (!chat || document.visibilityState !== 'visible' || isStreaming(chat) || replyElsewhere(chat)) return false;
+  const last = chat.messages[chat.messages.length - 1];
+  if (!last || last.role !== 'assistant' || last.pending || last.cutOff !== myDeviceId() || !cutOffHere.has(last.id)) return false;
+  if ((last.resumes || 0) >= MAX_RESUMES || !chatModel(chat)) return false;
+  cutOffHere.delete(last.id);
+  delete last.cutOff;
+  runCompletion(chat, undefined, last);
+  return true;
+}
+
+let resumeTimer = null;
+function autoResumeSoon(ms = 800) {
+  clearTimeout(resumeTimer);
+  resumeTimer = setTimeout(autoResumeAll, ms);
+}
+
+async function autoResumeAll() {
+  for (const [mid, cid] of [...cutOffHere]) {
+    const chat = S.cache.get(cid) || await loadChat(cid).catch(() => null);
+    if (!chat || !chat.messages.some((m) => m.id === mid)) {
+      cutOffHere.delete(mid);
+      continue;
+    }
+    autoResume(chat);
+  }
 }
 
 // Read a chat from storage into the cache.
@@ -2259,7 +2329,12 @@ async function send() {
   await runCompletion(chat);
 }
 
-async function runCompletion(chat, entry) {
+// With `resume` (a reply of this chat that was cut off on this device: the
+// app was closed, or the phone cut its connection in the background), that
+// reply is finished in place instead of a new one being started: a Hermes run
+// is followed again (Hermes kept working), any other model is asked to carry
+// on from where its text stopped.
+async function runCompletion(chat, entry, resume = null) {
   const model = chatModel(chat);
   if (!model) {
     acceptQueued(chat, entry);
@@ -2276,21 +2351,53 @@ async function runCompletion(chat, entry) {
   }
   // The reply names this device as its owner while it is written (a lease the
   // heartbeat below keeps fresh), so other devices don't treat it as cut off.
-  const msg = { id: uid(), role: 'assistant', content: '', createdAt: Date.now(), model, pending: true, owner: Lease.newOwner(myDeviceId(), myDeviceName()) };
-  const upto = chat.messages.length;
+  const owner = Lease.newOwner(myDeviceId(), myDeviceName());
+  let msg;
+  let upto;
+  // Finishing a cut-off reply: what it already wrote (its answer, without
+  // its thinking), and the Hermes run it belongs to.
+  let prefix = null;
+  let resumeRun = null;
+  if (resume) {
+    msg = resume;
+    upto = chat.messages.indexOf(msg);
+    if (upto < 0) return;
+    msg.pending = true;
+    msg.owner = owner;
+    msg.resumes = (msg.resumes || 0) + 1;
+    for (const k of ['error', 'notice', 'interrupted', 'stats']) delete msg[k];
+    if (msg.run && model.provider === 'hermes' && msg.model && msg.model.provider === 'hermes') {
+      // Hermes kept working: its run is replayed from the start.
+      resumeRun = msg.run;
+      msg.content = '';
+      msg.tools = [];
+      msg.approvals = [];
+    } else if (splitThinking(msg.content).answer.trim()) {
+      prefix = msg.content;
+    } else {
+      // Cut off before it wrote anything: just ask again.
+      msg.content = '';
+      msg.tools = (msg.tools || []).filter((t) => t.steer);
+    }
+  } else {
+    msg = { id: uid(), role: 'assistant', content: '', createdAt: Date.now(), model, pending: true, owner };
+    upto = chat.messages.length;
+    chat.messages.push(msg);
+  }
   const asker = chat.messages[upto - 1];
-  chat.messages.push(msg);
   chat.updatedAt = Date.now();
   if (S.current === chat) {
     renderChat();
-    scrollToReply(msg);
+    if (!resume) scrollToReply(msg);
   }
   voiceReplyStarted(chat, msg);
   await saveChatNow(chat);
   acceptQueued(chat, entry);
 
   const requestId = uid();
-  const request = { chat, msg };
+  // `prefix`: the text so far of a reply being continued; what the model
+  // writes now (its own thinking left out) goes after it.
+  const request = { chat, msg, prefix, raw: '' };
   S.requests.set(requestId, request);
   const beat = setInterval(() => {
     if (!msg.pending || !S.requests.has(requestId)) {
@@ -2303,8 +2410,13 @@ async function runCompletion(chat, entry) {
   updateComposer();
   renderSidebar();
 
-  await readLinksFor(chat, asker, msg, model);
-  const history = historyFor(chat, upto, model);
+  if (!resume) await readLinksFor(chat, asker, msg, model);
+  let history = historyFor(chat, upto, model);
+  if (prefix != null) {
+    history = [...history,
+      { role: 'assistant', content: splitThinking(prefix).answer.trim() },
+      { role: 'user', content: CONTINUE_ASK }];
+  }
   const recalled = shareMemoryWith(model) ? await recallFor(chat, model) : [];
   if (recalled.length) {
     msg.recalled = [...new Map(recalled.map((r) => [r.chatId, { chatId: r.chatId, title: r.title }])).values()];
@@ -2337,7 +2449,8 @@ async function runCompletion(chat, entry) {
     // For a computer's models: this reply's message, so the computer keeps its own copy.
     replyId: msg.id,
     replyAt: msg.createdAt,
-    replyModel: model
+    replyModel: model,
+    ...(resumeRun ? { resumeRun } : {})
   }).catch((err) => ({ ok: false, error: (err && err.message) || String(err) }));
 
   S.requests.delete(requestId);
@@ -2347,6 +2460,16 @@ async function runCompletion(chat, entry) {
   // this one out again instead of leaving an error under the message.
   if (!res.ok && res.code === 'busy') {
     const at = chat.messages.indexOf(msg);
+    // (A reply being finished stays, cut off, and is tried again later.)
+    if (resume) {
+      msg.pending = false;
+      delete msg.owner;
+      markCutOff(chat, msg);
+      await saveChatNow(chat);
+      if (S.current === chat) renderChat();
+      updateComposer();
+      return;
+    }
     if (at >= 0) chat.messages.splice(at, 1);
     if (V.reading && V.reading.msg === msg) stopReading();
     // A message that came from the queue stays queued (and is tried again a
@@ -2382,9 +2505,29 @@ async function runCompletion(chat, entry) {
     if (S.current === chat) toast(res.error, 5000);
     return;
   }
+  // The phone cut the connection while the app was in the background: the
+  // reply is finished when the app is back (see autoResume), not an error.
+  if (!res.ok && res.code === 'cutOff' && !request.stopped) {
+    msg.pending = false;
+    delete msg.owner;
+    delete msg.waiting;
+    delete msg.agentStatus;
+    for (const t of msg.tools || []) if (t.status === 'running') t.status = 'stopped';
+    markCutOff(chat, msg);
+    chat.updatedAt = Date.now();
+    await saveChatNow(chat);
+    if (S.current === chat) renderChat();
+    updateComposer();
+    autoResumeSoon();
+    return;
+  }
+  // A reply being continued: what the model wrote now goes after the text so far.
+  if (prefix != null && res.ok && !res.aborted && typeof res.text === 'string') {
+    msg.content = prefix + continuationText(res.text);
+  }
   // On a computer, "finished" can arrive before the last bits of text (they
   // travel separately): add any ending that hasn't arrived from the full reply.
-  if (res.ok && !res.aborted && typeof res.text === 'string' && res.text.length > msg.content.length && res.text.startsWith(msg.content)) {
+  if (prefix == null && res.ok && !res.aborted && typeof res.text === 'string' && res.text.length > msg.content.length && res.text.startsWith(msg.content)) {
     msg.content = res.text;
     voiceReplyUpdated(msg);
   }
@@ -3775,7 +3918,12 @@ function bindEvents() {
       return;
     }
     if (evt.type !== 'delta') return;
-    r.msg.content += evt.text;
+    if (r.prefix != null) {
+      r.raw += evt.text;
+      r.msg.content = r.prefix + continuationText(r.raw);
+    } else {
+      r.msg.content += evt.text;
+    }
     scheduleMessageRender(r.chat, r.msg);
     voiceReplyUpdated(r.msg);
     // Saving rewrites the whole chat, so phones save a streaming reply less often.
@@ -3799,6 +3947,7 @@ function bindEvents() {
   // Leaving the app: save the chats waiting for their timer, and sync (phone).
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') saveAndSyncNow();
+    else autoResumeSoon(1500);
   });
   window.addEventListener('pagehide', saveAndSyncNow);
   window.addEventListener('najwa:background', saveAndSyncNow);

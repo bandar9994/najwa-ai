@@ -146,7 +146,7 @@ function readChatWith(stored, deviceId, startedAt = 0) {
     assert.ok(start >= 0, head);
     return src.slice(start, src.indexOf('\n}\n', start) + 3);
   };
-  const body = `${take('function watchedReply(')}${take('async function readChat(id) {')}`;
+  const body = `const MAX_RESUMES = 3; const cutOffHere = new Map();${take('function watchedReply(')}${take('async function readChat(id) {')}${take('function markCutOff(')}`;
   const context = vm.createContext({ Lease, api: { chats: { get: async () => structuredClone(stored) } }, myDeviceId: () => deviceId, APP_STARTED: startedAt, Date });
   return vm.runInContext(`${body}; readChat`, context);
 }
@@ -166,6 +166,10 @@ test('loading a chat leaves a reply another device is still writing, and ends ev
   assert.strictEqual(by.stale.interrupted, true);
   assert.strictEqual(by.stale.content, 'Boo');
   assert.strictEqual(by.mine.pending, false, 'this device is not writing it any more (the app was closed)');
+  // ...so it is finished once the app is back (autoResume), and says so.
+  assert.strictEqual(by.mine.cutOff, 'pc');
+  assert.match(by.mine.notice, /finished when you come back/);
+  assert.strictEqual(by.stale.cutOff, undefined, 'another device\'s reply is not this device\'s to finish');
   assert.deepStrictEqual(by.plain, reply({ id: 'plain', pending: false, error: 'This reply was interrupted.' }), 'as before');
   assert.strictEqual(by.done.content, 'Done.');
 });
