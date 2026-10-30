@@ -523,3 +523,48 @@ test('a save from the window keeps the newer stored copy of a reply written for 
   const incoming = { messages: [{ ...own, content: 'short' }] };
   assert.strictEqual(Lease.keepNewerReplies(stored, incoming, 'desk').messages[0].content, 'short');
 });
+
+test('an agent\'s steps and questions in a phone\'s reply are kept in the computer\'s copy, and an answer from either device sticks', async () => {
+  const storage = await pcStorage();
+  const made = await storage.createChat({ title: 'Disk' });
+  await storage.saveChat({ ...made, messages: [{ id: 'q', role: 'user', content: 'Clean my disk', createdAt: 1 }] });
+  const asked = [];
+  const { h } = hub(storage, { onAsk: (chatId, a) => asked.push({ chatId, a }) });
+  let answer;
+  const waiting = new Promise((r) => { answer = r; });
+  const run = h.remoteChat({ ...phoneRequest(made.id), provider: 'hermes' }, { emit() {} }, async (onDelta, signal, onInfo) => {
+    onInfo({ kind: 'tool', id: 't1', label: 'du -sh ~/Library/Caches', status: 'running' });
+    onInfo({ kind: 'approval', runId: 'run_9', approvalId: 'a1', command: 'rm -rf ~/Library/Caches/old', description: 'delete old caches', choices: ['once', 'session', 'always', 'deny'] });
+    onDelta('Waiting for you…');
+    await waiting;
+    onInfo({ kind: 'tool', id: 't1', status: 'completed' });
+    onDelta(' Freed 2 GB.');
+    return { text: 'Waiting for you… Freed 2 GB.' };
+  });
+  for (let i = 0; i < 100 && !((await lastMessage(storage, made.id)).approvals || []).length; i++) await sleep(20);
+  const mid = await lastMessage(storage, made.id);
+  // The question is in the computer's chat, answerable here with this computer's Hermes.
+  assert.deepStrictEqual(mid.approvals.map((a) => [a.runId, a.approvalId, a.state, a.provider]), [['run_9', 'a1', 'pending', 'hermes']]);
+  assert.strictEqual(mid.tools[0].label, 'du -sh ~/Library/Caches');
+  assert.strictEqual(asked.length, 1);
+  assert.strictEqual(asked[0].chatId, made.id);
+  // Answered (here, or from the phone through this computer).
+  assert.strictEqual(h.answered({ runId: 'run_9', approvalId: 'a1', choice: 'once' }), true);
+  assert.strictEqual(h.answered({ runId: 'other', choice: 'once' }), false);
+  answer();
+  await run;
+  const done = await lastMessage(storage, made.id);
+  assert.strictEqual(done.content, 'Waiting for you… Freed 2 GB.');
+  assert.strictEqual(done.approvals[0].state, 'once');
+  assert.strictEqual(done.tools[0].status, 'completed');
+  assert.strictEqual(done.agentStatus, undefined);
+});
+
+test('a window save that is behind keeps the computer\'s newer reply, with the answer given in the window', () => {
+  const ask = { runId: 'run_9', approvalId: 'a1', command: 'rm', state: 'pending' };
+  const stored = { messages: [{ id: 'r1', role: 'assistant', content: 'Waiting for you… still working', pending: true, owner: { deviceId: 'phone-1', ts: 1 }, approvals: [ask] }] };
+  const incoming = { messages: [{ id: 'r1', role: 'assistant', content: 'Waiting', pending: true, owner: { deviceId: 'phone-1', ts: 1 }, approvals: [{ ...ask, state: 'once' }] }] };
+  const out = Lease.keepNewerReplies(stored, incoming, 'desk').messages[0];
+  assert.strictEqual(out.content, 'Waiting for you… still working');
+  assert.strictEqual(out.approvals[0].state, 'once');
+});

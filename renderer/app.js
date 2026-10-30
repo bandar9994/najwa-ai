@@ -1031,9 +1031,12 @@ async function answerApproval(chat, msg, approval, choice) {
   scheduleMessageRender(chat, msg);
   try {
     const payload = { runId: approval.runId, choice, approvalId: approval.approvalId };
+    // A phone's reply that runs on this computer (its copy here): the
+    // question goes to the model here, not back through "On your computer".
+    const provider = approval.provider && msg.model && msg.model.provider === 'computer' && replyHost(msg).here ? approval.provider : msg.model.provider;
     const ok = approvalPlace(approval) === 'computer'
       ? await api.ai.answerOn(approval.origin.id, payload)
-      : await api.ai.approve(msg.model.provider, msg.model.model, payload);
+      : await api.ai.approve(provider, msg.model.model, payload);
     if (ok === false) {
       // It stopped waiting (the reply ended, or it was answered elsewhere).
       approval.state = 'expired';
@@ -3779,6 +3782,7 @@ function bindEvents() {
     saveChatSoon(r.chat, S.info.mobile ? 5000 : 1500);
   });
 
+  if (api.onOpenChat) api.onOpenChat((id) => { if (typeof id === 'string') openChat(id); });
   api.onMenu((action) => {
     if (action === 'new-chat') newChat();
     if (action === 'search') { if (el.app.classList.contains('sidebar-collapsed')) toggleSidebar(); el.search.focus(); el.search.select(); }

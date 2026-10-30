@@ -129,7 +129,11 @@
       if (!others) return m;
       const longer = String(s.content || '').length > String(m.content || '').length;
       const finished = !s.pending && m.pending;
-      return longer || finished ? s : m;
+      if (!longer && !finished) return m;
+      // The stored copy goes on, with the answers given in this window.
+      if (!Array.isArray(m.approvals) || !Array.isArray(s.approvals)) return s;
+      const answered = new Map(m.approvals.filter((a) => a.state !== 'pending' && a.state !== 'sending').map((a) => [`${a.runId}|${a.approvalId || ''}`, a.state]));
+      return { ...s, approvals: s.approvals.map((a) => (a.state === 'pending' && answered.has(`${a.runId}|${a.approvalId || ''}`) ? { ...a, state: answered.get(`${a.runId}|${a.approvalId || ''}`) } : a)) };
     });
     return incoming;
   }

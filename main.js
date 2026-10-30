@@ -2,7 +2,7 @@
 // Licensed under the Najwa AI License (see LICENSE): non-commercial use only;
 // keep the Najwa AI name and the "Najwa AI by Bandar Altariqi" credit; no rebranding.
 
-const { app, BrowserWindow, ipcMain, Menu, shell, dialog, safeStorage, nativeTheme, screen, net, systemPreferences, powerSaveBlocker } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, shell, dialog, safeStorage, nativeTheme, screen, net, systemPreferences, powerSaveBlocker, Notification } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const { Storage } = require('./src/storage');
@@ -341,6 +341,13 @@ async function checkShared(providerId) {
   }
 }
 
+// An answer to a question of a phone's reply on this computer: its copy in
+// this computer's chat says so too (see reply-hub.js).
+function answeredHere(payload, ok) {
+  if (ok !== false && replies && payload) replies.answered(payload);
+  return ok;
+}
+
 async function approveOn(providerId, payload) {
   // A connector's question, asked by this computer.
   if (approvals.owns(payload)) return approvals.answer(payload);
@@ -369,8 +376,9 @@ const remoteHandlers = {
   chat: async (msg, { emit, signal }) => {
     await checkShared(msg.provider);
     // One reply per chat (a second one is refused with a "busy" error), and
-    // the reply is kept in this computer's copy of the chat too.
-    return whileAnswering(() => replies.remoteChat(msg, { emit, signal }, (onDelta, work) => runChat(msg.provider, msg.req || {}, onDelta, work || signal, (info) => emit({ t: 'info', info }))));
+    // the reply is kept in this computer's copy of the chat too, steps and
+    // questions included.
+    return whileAnswering(() => replies.remoteChat(msg, { emit, signal }, (onDelta, work, onInfo) => runChat(msg.provider, msg.req || {}, onDelta, work || signal, onInfo || ((info) => emit({ t: 'info', info })))));
   },
   // The phone stays connected and is told when this computer has new data to sync.
   watch: (msg, ctx) => replies.watch(msg, ctx),
@@ -382,9 +390,9 @@ const remoteHandlers = {
   // The phone answering an agent's request for permission.
   approve: async (msg) => {
     // A connector's question this computer asked, answered from the phone.
-    if (approvals.owns(msg.payload)) return approvals.answer(msg.payload);
+    if (approvals.owns(msg.payload)) return answeredHere(msg.payload, approvals.answer(msg.payload));
     await checkShared(msg.provider);
-    return approveOn(msg.provider, msg.payload || {});
+    return answeredHere(msg.payload, await approveOn(msg.provider, msg.payload || {}));
   }
 };
 
@@ -667,7 +675,7 @@ function registerIpc() {
   // Settings → Connectors: "Test" connects and lists the tools.
   ipcMain.handle('connectors:test', (_e, c) => connectors.test(c));
 
-  ipcMain.handle('ai:approve', (_e, providerId, _model, payload) => approveOn(providerId, payload));
+  ipcMain.handle('ai:approve', async (_e, providerId, _model, payload) => answeredHere(payload, await approveOn(providerId, payload)));
 
   // Stop a reply a phone asked this computer for (Stop pressed here, in the chat
   // where the reply shows as "Replying on <phone>"). 0 when this computer isn't writing it.
@@ -713,7 +721,26 @@ app.whenReady().then(async () => {
     storage,
     name: computerName,
     notify: (chats) => send('sync:event', { type: 'changed', chats, deleted: [], settings: false }),
-    syncNow: () => { sync.run().catch(() => {}); }
+    syncNow: () => { sync.run().catch(() => {}); },
+    // A phone's reply on this computer asks for permission (Hermes, a
+    // connector): it shows in this computer's chat too, so say so here, in
+    // case the phone has gone away and nobody would see it in time.
+    onAsk: (chatId, a) => {
+      try {
+        if (!Notification.isSupported()) return;
+        const n = new Notification({ title: `${a.title ? 'A connector' : 'Hermes'} is asking for permission`, body: String(a.title || a.command || a.description || '').slice(0, 160) });
+        n.on('click', () => {
+          if (!mainWindow || mainWindow.isDestroyed()) return;
+          if (mainWindow.isMinimized()) mainWindow.restore();
+          mainWindow.show();
+          mainWindow.focus();
+          send('chat:open', chatId);
+        });
+        n.show();
+      } catch {
+        // no notifications here
+      }
+    }
   });
   voice = createVoice({
     binDir: whisperDir,
