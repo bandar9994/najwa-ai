@@ -56,7 +56,7 @@ function fakeHermes(words, delay) {
 
 test('the phone uses the computer\'s Hermes and goes away: Hermes is not stopped and the computer finishes the reply', async () => {
   const words = ['Cleaning', ' caches', ' now.', ' Freed', ' 2 GB.'];
-  const hermes = await fakeHermes(words, 60);
+  const hermes = await fakeHermes(words, 150);
   const storage = await Storage.open(nodeFsBackend(fs.mkdtempSync(path.join(os.tmpdir(), 'najwa-hermes-away-'))));
   const hub = createReplyHub({ storage, name: () => 'Desk', flushMs: 10 });
   const provider = hermesProvider();
@@ -84,24 +84,28 @@ test('the phone uses the computer\'s Hermes and goes away: Hermes is not stopped
       const reader = res.body.getReader();
       return new Response(new ReadableStream({
         async pull(ctrl) {
-          const r = await Promise.race([reader.read(), gone.then(() => null)]);
-          if (r === null) { reader.cancel().catch(() => {}); ctrl.error(new TypeError('The network connection was lost.')); }
+          const r = away ? null : await Promise.race([reader.read(), gone.then(() => null)]);
+          if (r === null || away) { reader.cancel().catch(() => {}); ctrl.error(new TypeError('The network connection was lost.')); }
           else if (r.done) ctrl.close();
           else ctrl.enqueue(r.value);
         }
       }), { status: res.status, headers: res.headers });
     };
-    const phone = remoteComputers({ getKey: async () => key, getComputers: async () => ({ desk: { id: 'desk', name: 'Desk', addrs: ['127.0.0.1'], port: server.port, enabled: true } }), fetch: net, resumeMs: 300, probeMs: 100 });
+    const phone = remoteComputers({ getKey: async () => key, getComputers: async () => ({ desk: { id: 'desk', name: 'Desk', addrs: ['127.0.0.1'], port: server.port, enabled: true } }), fetch: net, resumeMs: 300 });
     let got = '';
     const asking = phone.streamChat({}, {
       model: 'hermes-agent (Desk, Hermes Agent)', messages: [{ role: 'user', content: 'Clean my disk' }], chatId: made.id,
       device: { id: 'phone-1', name: 'Pixel' }, reply: { id: 'r1', at: Date.now(), model: { provider: 'computer', model: 'hermes-agent (Desk, Hermes Agent)' } }
-    }, (d) => { got += d; }).catch((err) => err);
-    for (let i = 0; i < 100 && !got; i++) await sleep(20);
-    away = true;
-    markGone();
+    }, (d) => {
+      got += d;
+      // Gone right after the first words (the app is left), at once, whatever the machine's speed.
+      if (!away) {
+        away = true;
+        markGone();
+      }
+    }).catch((err) => err);
     const ended = await asking;
-    assert.strictEqual(ended.code, 'elsewhere', 'the phone leaves the reply to the computer');
+    assert.strictEqual(ended.code, 'elsewhere', `the phone leaves the reply to the computer (got: ${ended && (ended.message || JSON.stringify(ended))})`);
     for (let i = 0; i < 100 && (await storage.getChat(made.id)).messages[1].pending; i++) await sleep(30);
     const m = (await storage.getChat(made.id)).messages[1];
     assert.strictEqual(m.content, words.join(''));
