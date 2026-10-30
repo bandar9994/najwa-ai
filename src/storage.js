@@ -303,6 +303,12 @@ class Storage {
     return this._putChat(chat, { local: true });
   }
 
+  // A local save that first looks at the stored copy, in the same step as the
+  // write: `merge(stored, chat)` may change `chat` (see Lease.keepNewerReplies).
+  saveChatOver(chat, merge) {
+    return this._putChat(chat, { local: true, merge });
+  }
+
   // Store a chat that arrived through sync, keeping its modifiedAt. With
   // `expect` (the local revision sync based its decision on, or null for "not
   // on this device"), the chat is only stored if that's still the local
@@ -312,7 +318,7 @@ class Storage {
     return this._putChat(chat, { local: false, expect });
   }
 
-  _putChat(chat, { local, expect }) {
+  _putChat(chat, { local, expect, merge }) {
     if (!chat || !chat.id) return Promise.reject(new Error('Chat must have an id'));
     let file;
     try {
@@ -325,6 +331,10 @@ class Storage {
       if (expect !== undefined) {
         const current = this.index.find((c) => c.id === chat.id);
         if ((current ? current.rev : null) !== expect) return null;
+      }
+      if (merge) {
+        const stored = await this._readJson(file, null);
+        if (stored) merge(upgradeChat(stored), chat);
       }
       return this._commitChat(chat, file, local);
     });

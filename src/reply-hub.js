@@ -12,7 +12,11 @@
 //    copy of the chat as they stream, with the phone's message id and the
 //    phone as owner (see lease.js), then finished and synced. Closing the
 //    phone's app mid-reply doesn't lose the reply, and the phone's own copy
-//    merges with this one without a duplicate (same message id).
+//    merges with this one without a duplicate (same message id). Its steps
+//    and questions go in too (an agent's tools, a request for permission), so
+//    a question can be answered here, or on the phone once it is back, instead
+//    of going unanswered (Hermes gives up after a few minutes) while the phone
+//    is away.
 //  * "watch": a phone that is open keeps one encrypted connection to this
 //    computer and is told when this computer has pushed new data to the synced
 //    copy, so it syncs at once instead of at its next poll.
@@ -23,11 +27,11 @@
 'use strict';
 
 const Lease = require('./lease');
+// Why a reply is stopped, as the abort signal's reason.
+const { STOPPED } = require('./remote-server');
 
 const MAX_WATCHERS = 16;
-const INTERRUPTED = 'This reply was interrupted.';
-// Why a reply is stopped, as the abort signal's reason (see remote-server.js).
-const STOPPED = 'stopped';
+const INTERRUPTED = Lease.INTERRUPTED_ERROR;
 
 function busyError(who, here) {
   const where = who && who.source !== 'local' && who.name ? who.name : here;
@@ -46,9 +50,10 @@ function busyError(who, here) {
  * @param orphanMs      how long a finished reply waits for its chat to arrive through sync
  * @param retryMs       how often it looks
  */
-function createReplyHub({ storage, name = () => 'this computer', notify = () => {}, syncNow = () => {}, now = () => Date.now(), flushMs = 2000, heartbeatMs = Lease.HEARTBEAT_MS, orphanMs = 2 * 60 * 1000, retryMs = 3000 }) {
+function createReplyHub({ storage, name = () => 'this computer', notify = () => {}, syncNow = () => {}, onAsk = () => {}, now = () => Date.now(), flushMs = 2000, heartbeatMs = Lease.HEARTBEAT_MS, orphanMs = 2 * 60 * 1000, retryMs = 3000 }) {
   const active = new Map();   // chat id -> who is writing its reply
   const watchers = new Set();
+  const asking = new Map();   // an open question's run id -> the reply copy it is in
 
   function holder(chatId) {
     return (chatId && active.get(String(chatId))) || null;
@@ -81,13 +86,22 @@ function createReplyHub({ storage, name = () => 'this computer', notify = () => 
       deviceName: typeof msg.deviceName === 'string' && msg.deviceName ? msg.deviceName : 'your phone',
       replyId: r.id,
       at: Number.isFinite(r.at) ? r.at : now(),
-      model: r.model && typeof r.model === 'object' ? r.model : null
+      model: r.model && typeof r.model === 'object' ? r.model : null,
+      // the model's provider on this computer (to answer its questions from here)
+      provider: typeof msg.provider === 'string' ? msg.provider : null
     };
   }
 
+  const askKey = (a) => `${a.runId}|${a.approvalId || ''}`;
+
   // Writes the reply as it comes: begin() -> delta(text)... -> finish(...).
-  function mirror(t) {
+  // onOver() is called once if the phone's copy turns out to have ended
+  // already (the phone gave up on it, or it was stopped there).
+  function mirror(t, { onOver = () => {} } = {}) {
     let text = '';
+    const tools = [];       // the agent's steps
+    const approvals = [];   // its questions, with the answer once there is one
+    let status = null;
     let dirty = false;
     let timer = null;
     let chain = Promise.resolve();
@@ -113,13 +127,31 @@ function createReplyHub({ storage, name = () => 'this computer', notify = () => 
           if (m.error === INTERRUPTED) delete m.error;
           if (m.notice === Lease.INTERRUPTED_NOTICE) delete m.notice;
         } else if (!m.pending) {
-          over = true;  // finished on the phone meanwhile
+          // finished on the phone meanwhile
+          if (!over) {
+            over = true;
+            onOver();
+          }
           return false;
         } else if (m.owner && m.owner.deviceId !== t.deviceId) {
           return false; // someone else's reply under that id: never touch
         }
         if (text.length >= String(m.content || '').length) m.content = text;
+        if (tools.length) m.tools = tools.map((x) => ({ ...x }));
+        if (approvals.length) {
+          // An answer given on any device (saved in the chat) is kept.
+          const before = new Map((m.approvals || []).map((x) => [askKey(x), x]));
+          for (const a of approvals) {
+            const was = before.get(askKey(a));
+            if (was && was.state !== 'pending' && was.state !== 'sending' && a.state === 'pending') a.state = was.state;
+          }
+          m.approvals = approvals.map((a) => ({ ...a }));
+        }
+        if (status && !fin) m.agentStatus = status;
         if (fin) {
+          delete m.agentStatus;
+          for (const a of m.approvals || []) if (a.state === 'pending' || a.state === 'sending') a.state = 'expired';
+          for (const x of m.tools || []) if (x.status === 'running') x.status = fin.error || fin.interrupted ? 'stopped' : 'completed';
           m.pending = false;
           delete m.owner;
           delete m.runningOn;
@@ -174,16 +206,65 @@ function createReplyHub({ storage, name = () => 'this computer', notify = () => 
     dirty = true;
     flush();
 
+    const soon = () => {
+      dirty = true;
+      if (!timer) {
+        timer = setTimeout(flush, flushMs);
+        if (timer.unref) timer.unref();
+      }
+    };
+
     return {
       delta(piece) {
         if (over) return;
         text += piece;
-        dirty = true;
-        if (!timer) {
-          timer = setTimeout(flush, flushMs);
-          if (timer.unref) timer.unref();
-        }
+        soon();
       },
+      // What the agent does besides writing: { kind: 'tool' | 'approval' | 'status' | 'replace', ... }.
+      info(evt) {
+        if (over || !evt) return;
+        if (evt.kind === 'tool') {
+          const known = evt.id && tools.find((x) => x.id === evt.id);
+          if (known) {
+            known.status = evt.status || known.status;
+            if (evt.relabel && evt.label) known.label = String(evt.label).slice(0, 200);
+          } else if (evt.status !== 'completed') {
+            tools.push({ id: evt.id || `${tools.length}`, emoji: evt.emoji || '', label: String(evt.label || evt.tool || 'tool').slice(0, 200), status: evt.status || 'running' });
+          }
+        } else if (evt.kind === 'approval' && evt.runId) {
+          const a = {
+            runId: String(evt.runId),
+            approvalId: evt.approvalId || null,
+            provider: t.provider,
+            origin: evt.origin && evt.origin.id ? evt.origin : null,
+            connectorId: evt.connectorId || null,
+            title: evt.title ? String(evt.title).slice(0, 200) : null,
+            command: String(evt.command || '').slice(0, 2000),
+            description: String(evt.description || '').slice(0, 500),
+            choices: Array.isArray(evt.choices) && evt.choices.length ? evt.choices : ['once', 'deny'],
+            state: 'pending'
+          };
+          approvals.push(a);
+          asking.set(a.runId, this);
+          onAsk(t.chatId, a);
+        } else if (evt.kind === 'status') {
+          status = evt.text ? String(evt.text).slice(0, 200) : null;
+        } else if (evt.kind === 'replace' && typeof evt.text === 'string') {
+          text = evt.text;
+        } else {
+          return;
+        }
+        soon();
+      },
+      // A question of this reply was answered (here or from the phone).
+      answered(payload) {
+        const a = approvals.find((x) => askKey(x) === askKey({ runId: payload.runId, approvalId: payload.approvalId || null }) && x.state === 'pending');
+        if (!a) return false;
+        a.state = payload.choice || 'once';
+        soon();
+        return true;
+      },
+      runIds: () => approvals.map((a) => a.runId),
       // The reply ended: `result` is what the model returned (or null), `error`
       // what went wrong. The reply is finished in the chat and synced.
       async finish({ result = null, error = null, aborted = false, interrupted = false } = {}) {
@@ -231,12 +312,19 @@ function createReplyHub({ storage, name = () => 'this computer', notify = () => 
 
   // Runs a chat request from the phone: claims the chat, mirrors the reply into
   // this computer's copy of the chat (when the phone says which), and releases.
-  // run(onDelta) does the work and returns what the model returned.
+  // run(onDelta, signal) does the work and returns what the model returned; it
+  // is stopped (through that signal) when the phone's copy of the reply has
+  // ended already, so the model doesn't write on, and hold the chat, for no one.
   async function remoteChat(msg, { emit, signal }, run) {
     const chatId = typeof msg.chatId === 'string' ? msg.chatId : msg.req && typeof msg.req.chatId === 'string' ? msg.req.chatId : null;
     const release = claim(chatId, { source: 'phone', deviceId: typeof msg.deviceId === 'string' ? msg.deviceId : null, name: typeof msg.deviceName === 'string' && msg.deviceName ? msg.deviceName : 'your phone' });
     const t = target(msg);
-    const copy = t ? mirror(t) : null;
+    const work = new AbortController();
+    if (signal) {
+      if (signal.aborted) work.abort(signal.reason);
+      else signal.addEventListener('abort', () => work.abort(signal.reason), { once: true });
+    }
+    const copy = t ? mirror(t, { onOver: () => work.abort(STOPPED) }) : null;
     let result = null;
     let error = null;
     let aborted = false;
@@ -244,6 +332,9 @@ function createReplyHub({ storage, name = () => 'this computer', notify = () => 
       result = await run((text) => {
         if (copy) copy.delta(text);
         emit({ t: 'delta', text });
+      }, work.signal, (info) => {
+        if (copy) copy.info(info);
+        emit({ t: 'info', info });
       });
       return result;
     } catch (err) {
@@ -252,6 +343,7 @@ function createReplyHub({ storage, name = () => 'this computer', notify = () => 
       throw err;
     } finally {
       release();
+      if (copy) for (const id of copy.runIds()) if (asking.get(id) === copy) asking.delete(id);
       const stopped = aborted || !!(result && result.aborted);
       // Stopped by the user: a normal ending. Stopped by anything else (no one
       // came back for it, sharing turned off): cut off, and says so.
@@ -283,7 +375,14 @@ function createReplyHub({ storage, name = () => 'this computer', notify = () => 
     for (const send of [...watchers]) send({ chats, deleted, settings });
   }
 
-  return { claim, holder, remoteChat, watch, announce, watching: () => watchers.size };
+  // A question was answered (on this computer, or from the phone): the copy
+  // of the reply it is in says so too. False if it isn't one of ours.
+  function answered(payload) {
+    const copy = payload && asking.get(String(payload.runId));
+    return copy ? copy.answered(payload) : false;
+  }
+
+  return { claim, holder, remoteChat, watch, announce, answered, watching: () => watchers.size };
 }
 
 module.exports = { createReplyHub };

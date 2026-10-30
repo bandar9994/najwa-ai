@@ -402,7 +402,9 @@ test('Hermes runs: a dropped connection reconnects and picks up where it left of
     assert.strictEqual(result.text, text);
     // Reconnected once, after the last event it had (3).
     assert.deepStrictEqual(h.seen.lastIds, [null, '3']);
-    assert.deepStrictEqual(infos.map((i) => `${i.kind}:${i.status || i.command || i.text}`), [
+    // The run's id comes first (the app keeps it, to follow the run again after being closed).
+    assert.deepStrictEqual(infos[0], { kind: 'run', runId: 'run_1' });
+    assert.deepStrictEqual(infos.slice(1).map((i) => `${i.kind}:${i.status || i.command || i.text}`), [
       'tool:running', 'tool:completed', 'status:Reconnecting to Hermes…', 'status:', 'approval:rm -rf old/'
     ]);
     assert.strictEqual(infos.find((i) => i.kind === 'approval').approvalId, 'a1');
@@ -434,6 +436,21 @@ test('Hermes runs: messages sent while the agent works, and one sent too late', 
     assert.strictEqual(result.pendingSteer, 'and the logs');
     // Once the run is over, nothing more is taken.
     assert.strictEqual(steering.send, null);
+  } finally {
+    h.server.close();
+  }
+});
+
+test('Hermes runs: a run that is already going (the app was closed) is followed again, not started again', async () => {
+  const h = await fakeHermesRuns({ script: 'stop-free' });
+  try {
+    const infos = [];
+    let text = '';
+    const result = await hermes.streamChat({ baseUrl: h.url, apiKey: KEY }, { model: 'hermes-agent', messages: [{ role: 'user', content: 'Clean my disk' }], resumeRun: 'run_1' },
+      (piece) => { text += piece; }, undefined, (info) => infos.push(info));
+    assert.strictEqual(h.seen.posts.length, 0, 'no new run');
+    assert.ok(!infos.some((i) => i.kind === 'run'));
+    assert.strictEqual(result.text, '<think>Look for caches.</think>\n\nFreed 2.4 GB.');
   } finally {
     h.server.close();
   }

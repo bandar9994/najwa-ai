@@ -57,6 +57,8 @@
 
   // What a reply that was cut off after it had text says, so it never looks finished.
   const INTERRUPTED_NOTICE = 'This reply stopped before it was finished: the device writing it went quiet. Tap Regenerate to ask again.';
+  // ...and what one that was cut off before any text says.
+  const INTERRUPTED_ERROR = 'This reply was interrupted.';
 
   // A reply that is still marked as being written but isn't (any more): ends
   // it the way a reply cut off by closing the app always ended, flags it
@@ -64,7 +66,7 @@
   // says so when it had text (it must not look like a finished reply).
   function interrupt(msg) {
     msg.pending = false;
-    if (!msg.content) msg.error = 'This reply was interrupted.';
+    if (!msg.content) msg.error = INTERRUPTED_ERROR;
     else if (!msg.notice) msg.notice = INTERRUPTED_NOTICE;
     if (msg.owner) {
       msg.interrupted = true;
@@ -112,6 +114,30 @@
     return { name: here ? (me.name || host.name) : host.name, here, askedFrom: asked };
   }
 
+  // A copy of a chat about to be saved over the stored one, from a window that
+  // may be behind: replies another device owns (or that this computer wrote
+  // for a phone, `mirrored`) keep their stored version when it is further on:
+  // longer, or finished while the incoming copy is still being written.
+  // Changes `incoming` in place and returns it.
+  function keepNewerReplies(stored, incoming, deviceId) {
+    if (!stored || !incoming || !Array.isArray(stored.messages) || !Array.isArray(incoming.messages)) return incoming;
+    const byId = new Map(stored.messages.map((m) => [m.id, m]));
+    incoming.messages = incoming.messages.map((m) => {
+      const s = m && byId.get(m.id);
+      if (!s || s.role !== 'assistant') return m;
+      const others = s.mirrored || (s.owner && s.owner.deviceId && s.owner.deviceId !== deviceId);
+      if (!others) return m;
+      const longer = String(s.content || '').length > String(m.content || '').length;
+      const finished = !s.pending && m.pending;
+      if (!longer && !finished) return m;
+      // The stored copy goes on, with the answers given in this window.
+      if (!Array.isArray(m.approvals) || !Array.isArray(s.approvals)) return s;
+      const answered = new Map(m.approvals.filter((a) => a.state !== 'pending' && a.state !== 'sending').map((a) => [`${a.runId}|${a.approvalId || ''}`, a.state]));
+      return { ...s, approvals: s.approvals.map((a) => (a.state === 'pending' && answered.has(`${a.runId}|${a.approvalId || ''}`) ? { ...a, state: answered.get(`${a.runId}|${a.approvalId || ''}`) } : a)) };
+    });
+    return incoming;
+  }
+
   // "Replying on <device>…", or just "Replying…" when this device writes it.
   function replyingLabel(msg, me = {}, lang = language()) {
     const r = runningOn(msg, me);
@@ -149,7 +175,7 @@
   const language = () => (typeof navigator !== 'undefined' && /^ar/i.test(navigator.language || '') ? 'ar' : 'en');
   const text = (key, name, lang = language()) => (STRINGS[lang] || STRINGS.en)[key](name || 'another device');
 
-  const api = { text, runningOn, replyingLabel, STRINGS, LEASE_MS, HEARTBEAT_MS, SKEW_MS, INTERRUPTED_NOTICE, leaseLive, liveReply, isReplyInProgress, replyInProgress, foreignReply, foreignInChat, newOwner, touch, interrupt };
+  const api = { text, runningOn, replyingLabel, STRINGS, LEASE_MS, HEARTBEAT_MS, SKEW_MS, INTERRUPTED_NOTICE, INTERRUPTED_ERROR, keepNewerReplies, leaseLive, liveReply, isReplyInProgress, replyInProgress, foreignReply, foreignInChat, newOwner, touch, interrupt };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Lease = api;
 })(typeof window !== 'undefined' ? window : globalThis);

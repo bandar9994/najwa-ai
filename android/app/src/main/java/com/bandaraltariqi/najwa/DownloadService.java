@@ -18,11 +18,12 @@ import androidx.core.app.NotificationCompat;
 import androidx.core.content.ContextCompat;
 
 /**
- * Keeps model downloads going while Najwa AI is in the background. Android
- * cuts the network off for background apps ("Software caused connection
- * abort"); a foreground service, shown as a notification with the progress,
- * keeps it. LlamaPlugin starts it with the first download and stops it when
- * the last one ends.
+ * Keeps model downloads, and replies being written on the phone, going while
+ * Najwa AI is in the background. Android cuts the network off for background
+ * apps ("Software caused connection abort"); a foreground service, shown as a
+ * notification, keeps it. LlamaPlugin starts it with the first download and
+ * stops it when the last one ends; NetPlugin.replying() holds it while a
+ * reply is written. It stops when neither needs it.
  */
 public class DownloadService extends Service {
 
@@ -30,40 +31,78 @@ public class DownloadService extends Service {
     private static final int NOTIFICATION_ID = 7001;
 
     private static volatile boolean running = false;
+    private static volatile boolean downloading = false;
+    private static volatile boolean replying = false;
     private static volatile String text = "Downloading a model…";
     private static volatile int percent = -1;  // -1 = unknown
 
     private PowerManager.WakeLock wakeLock;
 
     static void start(Context context) {
+        downloading = true;
+        keep(context);
+    }
+
+    static void stop(Context context) {
+        downloading = false;
+        if (replying) refresh(context);
+        else context.stopService(new Intent(context, DownloadService.class));
+    }
+
+    /** A reply is being written (true) or no longer (false). */
+    static void replying(Context context, boolean on) {
+        replying = on;
+        if (on) {
+            keep(context);
+            refresh(context);
+        } else if (downloading) {
+            refresh(context);
+        } else {
+            context.stopService(new Intent(context, DownloadService.class));
+        }
+    }
+
+    private static void keep(Context context) {
         try {
             ContextCompat.startForegroundService(context, new Intent(context, DownloadService.class));
         } catch (Exception e) {
             // Not allowed right now (e.g. the app is already in the background):
-            // the download still runs while the app is open.
+            // the work still runs while the app is open.
         }
     }
 
-    static void stop(Context context) {
-        context.stopService(new Intent(context, DownloadService.class));
+    private static void refresh(Context context) {
+        if (!running) return;
+        NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+        try {
+            nm.notify(NOTIFICATION_ID, build(context));
+        } catch (Exception ignored) {
+            // No permission to show notifications: the work goes on anyway.
+        }
     }
 
     /** Updates the notification (`percent` -1 when the size isn't known). */
     static void progress(Context context, String message, int pct) {
         text = message;
         percent = pct;
-        if (!running) return;
-        NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
-        try {
-            nm.notify(NOTIFICATION_ID, build(context));
-        } catch (Exception ignored) {
-            // No permission to show notifications: the download goes on anyway.
-        }
+        refresh(context);
     }
 
     private static android.app.Notification build(Context context) {
         Intent open = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
         PendingIntent tap = open == null ? null : PendingIntent.getActivity(context, 0, open, PendingIntent.FLAG_IMMUTABLE);
+        if (!downloading) {
+            // Only a reply: no progress bar.
+            return new NotificationCompat.Builder(context, CHANNEL)
+                .setSmallIcon(android.R.drawable.stat_notify_chat)
+                .setContentTitle("Najwa AI")
+                .setContentText("Writing a reply…")
+                .setOngoing(true)
+                .setOnlyAlertOnce(true)
+                .setSilent(true)
+                .setContentIntent(tap)
+                .build();
+        }
         return new NotificationCompat.Builder(context, CHANNEL)
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .setContentTitle("Najwa AI")
@@ -79,7 +118,7 @@ public class DownloadService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (Build.VERSION.SDK_INT >= 26) {
-            NotificationChannel channel = new NotificationChannel(CHANNEL, "Model downloads", NotificationManager.IMPORTANCE_LOW);
+            NotificationChannel channel = new NotificationChannel(CHANNEL, "Downloads and replies", NotificationManager.IMPORTANCE_LOW);
             ((NotificationManager) getSystemService(NOTIFICATION_SERVICE)).createNotificationChannel(channel);
         }
         try {
@@ -111,6 +150,8 @@ public class DownloadService extends Service {
     @Override
     public void onDestroy() {
         running = false;
+        downloading = false;
+        replying = false;
         if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
         wakeLock = null;
         super.onDestroy();

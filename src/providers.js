@@ -655,7 +655,11 @@ const hermesProvider = (doFetch = (...args) => fetch(...args)) => {
     // onInfo receives { kind: 'tool' | 'approval' | 'status' | 'replace', ... } as the agent works.
     async streamChat(cfg, req, onDelta, signal, onInfo = () => {}) {
       const w = replyWriter(onDelta);
-      const runId = await startRun(cfg, req, signal);
+      // A run that is already going (the app was closed while Hermes worked):
+      // follow it again from the start, instead of asking again.
+      const runId = req.resumeRun || await startRun(cfg, req, signal);
+      // Kept with the reply, so the app can do that after it was closed.
+      if (runId && !req.resumeRun) onInfo({ kind: 'run', runId });
       if (!runId) {
         const stopReason = await chatCompletions(cfg, req, w, signal, onInfo);
         return { text: w.text, stopReason };

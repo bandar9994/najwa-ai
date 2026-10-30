@@ -35,5 +35,5 @@ test('Regenerate never returns silently, and checks for a foreign reply before d
 });
 
 test('a failed request from the window ends the reply with an error instead of leaving it running', () => {
-  assert.match(app, /replyModel: model\n  \}\)\.catch\(\(err\) => \(\{ ok: false, error:/);
+  assert.match(app, /replyModel: model,?(\n[^\n]*resumeRun[^\n]*)?\n  \}\)\.catch\(\(err\) => \(\{ ok: false, error:/);
 });

@@ -126,7 +126,9 @@ function startRemoteServer({ getKey, handlers, port = PORT, host = '0.0.0.0', he
     }
     // A body that stops arriving is dropped, instead of holding the
     // connection open (the timeout is lifted again for the reply).
-    req.socket.setTimeout(bodyIdleMs, () => req.destroy());
+    const idle = () => req.destroy();
+    req.socket.setTimeout(bodyIdleMs);
+    req.socket.on('timeout', idle);
     let size = 0;
     const chunks = [];
     try {
@@ -140,6 +142,7 @@ function startRemoteServer({ getKey, handlers, port = PORT, host = '0.0.0.0', he
       }
     } finally {
       if (big) bigReads--;
+      req.socket.removeListener('timeout', idle);
       req.socket.setTimeout(0);
     }
     return Buffer.concat(chunks).toString('utf8');

@@ -278,5 +278,9 @@ contextBridge.exposeInMainWorld('balimda', {
   },
   onMenu(cb) {
     ipcRenderer.on('menu', (_e, action) => cb(action));
+  },
+  // A desktop notification about a chat was clicked.
+  onOpenChat(cb) {
+    ipcRenderer.on('chat:open', (_e, id) => cb(id));
   }
 });

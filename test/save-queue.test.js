@@ -49,6 +49,21 @@ test('soon() saves on the timer, once per chat however often it is called', asyn
   assert.strictEqual(queue.pending(), 0);
 });
 
+test('soon() with a fresh copy of a waiting chat saves the fresh copy (it was swapped, e.g. by sync)', async () => {
+  const { saved, clock, queue } = setup();
+  queue.soon({ id: 'a', text: 'old copy' }, 5000);
+  queue.soon({ id: 'a', text: 'fresh copy, edited' }, 5000);
+  assert.strictEqual(clock.pending(), 1);
+  clock.runAll();
+  await tick();
+  assert.deepStrictEqual(saved, ['a:fresh copy, edited']);
+  // flush() also writes the newest copy
+  queue.soon({ id: 'b', text: 'one' }, 5000);
+  queue.soon({ id: 'b', text: 'two' }, 5000);
+  await queue.flush();
+  assert.deepStrictEqual(saved, ['a:fresh copy, edited', 'b:two']);
+});
+
 test('flush() saves every waiting chat now and cancels their timers', async () => {
   const { saved, clock, queue } = setup();
   queue.soon({ id: 'a', text: '1' }, 5000);

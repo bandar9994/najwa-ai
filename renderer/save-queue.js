@@ -38,14 +38,21 @@
       await write(chat);
     }
 
-    // Saves the chat in `ms`, unless a save is already waiting.
+    // Saves the chat in `ms`, unless a save is already waiting. Then the
+    // waiting save keeps its time but writes this copy: the chat may have been
+    // swapped for a fresh one (from sync) since, and the newest is what counts.
     function soon(chat, ms, after = () => {}) {
-      if (waiting.has(chat.id)) return;
-      const timer = schedule(() => {
+      const entry = waiting.get(chat.id);
+      if (entry) {
+        entry.chat = chat;
+        return;
+      }
+      const fresh = { chat, timer: null };
+      fresh.timer = schedule(() => {
         waiting.delete(chat.id);
-        write(chat).then(() => after(chat));
+        write(fresh.chat).then(() => after(fresh.chat));
       }, ms);
-      waiting.set(chat.id, { chat, timer });
+      waiting.set(chat.id, fresh);
     }
 
     // Saves every chat that is waiting, now. Resolves when all are written.

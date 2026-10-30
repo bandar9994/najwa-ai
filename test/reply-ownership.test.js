@@ -146,7 +146,7 @@ function readChatWith(stored, deviceId, startedAt = 0) {
     assert.ok(start >= 0, head);
     return src.slice(start, src.indexOf('\n}\n', start) + 3);
   };
-  const body = `${take('function watchedReply(')}${take('async function readChat(id) {')}`;
+  const body = `const MAX_RESUMES = 3; const cutOffHere = new Map();${take('function watchedReply(')}${take('async function readChat(id) {')}${take('function markCutOff(')}`;
   const context = vm.createContext({ Lease, api: { chats: { get: async () => structuredClone(stored) } }, myDeviceId: () => deviceId, APP_STARTED: startedAt, Date });
   return vm.runInContext(`${body}; readChat`, context);
 }
@@ -166,6 +166,10 @@ test('loading a chat leaves a reply another device is still writing, and ends ev
   assert.strictEqual(by.stale.interrupted, true);
   assert.strictEqual(by.stale.content, 'Boo');
   assert.strictEqual(by.mine.pending, false, 'this device is not writing it any more (the app was closed)');
+  // ...so it is finished once the app is back (autoResume), and says so.
+  assert.strictEqual(by.mine.cutOff, 'pc');
+  assert.match(by.mine.notice, /finished when you come back/);
+  assert.strictEqual(by.stale.cutOff, undefined, 'another device\'s reply is not this device\'s to finish');
   assert.deepStrictEqual(by.plain, reply({ id: 'plain', pending: false, error: 'This reply was interrupted.' }), 'as before');
   assert.strictEqual(by.done.content, 'Done.');
 });
@@ -474,4 +478,97 @@ test('the texts for watching a reply exist in English and Arabic', () => {
   for (const lang of ['en', 'ar']) {
     for (const k of ['replyingOn', 'stopThere', 'stopFailed']) assert.match(Lease.text(k, 'Pixel', lang), /Pixel/);
   }
+});
+
+test('when the phone\'s copy has ended already, the computer stops its run and frees the chat', async () => {
+  const storage = await pcStorage();
+  const made = await storage.createChat({ title: 'Trip' });
+  // The phone gave up on its reply (an error, not "cut off"): its copy has ended.
+  await storage.saveChat({ ...made, messages: [{ id: 'q', role: 'user', content: 'Cheapest ticket?', createdAt: 1 },
+    { id: 'r1', role: 'assistant', content: 'Book', createdAt: 1000, error: 'Error: Couldn\'t reconnect' }] });
+  const { h } = hub(storage);
+  let stopped = false;
+  await assert.rejects(h.remoteChat(phoneRequest(made.id), { emit() {} }, (onDelta, signal) => new Promise((resolve, reject) => {
+    onDelta('Book early');
+    signal.addEventListener('abort', () => {
+      stopped = true;
+      const err = new Error('The operation was aborted.');
+      err.name = 'AbortError';
+      reject(err);
+    });
+    setTimeout(() => resolve({ text: 'never' }), 3000);
+  })), { name: 'AbortError' });
+  assert.ok(stopped, 'the run was stopped');
+  // The chat is free again at once (not held for an hour).
+  h.claim(made.id, { source: 'local', name: 'Desk' })();
+  // And the phone's ended copy is left as it was.
+  const m = await lastMessage(storage, made.id);
+  assert.strictEqual(m.content, 'Book');
+  assert.strictEqual(m.error, 'Error: Couldn\'t reconnect');
+});
+
+test('a save from the window keeps the newer stored copy of a reply written for a phone', async () => {
+  const storage = await pcStorage();
+  const made = await storage.createChat({ title: 'Trip' });
+  const q = { id: 'q', role: 'user', content: 'Cheapest ticket?', createdAt: 1 };
+  // What the computer wrote for the phone (finished), and the window's older copy (still writing).
+  await storage.saveChat({ ...made, messages: [q, { id: 'r1', role: 'assistant', content: 'Book early.', createdAt: 1000, mirrored: true }] });
+  const windowCopy = { ...made, title: 'Trip to Jeddah', messages: [q, { id: 'r1', role: 'assistant', content: 'Bo', createdAt: 1000, pending: true, owner: { deviceId: 'phone-1', name: 'Pixel', ts: 1 } },
+    { id: 'm2', role: 'assistant', content: 'mine', createdAt: 2000 }] };
+  await storage.saveChatOver(windowCopy, (stored, incoming) => Lease.keepNewerReplies(stored, incoming, 'desk'));
+  const saved = await storage.getChat(made.id);
+  assert.strictEqual(saved.title, 'Trip to Jeddah', 'the window\'s own changes are saved');
+  assert.strictEqual(saved.messages[1].content, 'Book early.');
+  assert.ok(!saved.messages[1].pending);
+  assert.strictEqual(saved.messages[2].content, 'mine');
+  // This computer's own reply: the window's copy always wins.
+  const own = { id: 'r3', role: 'assistant', content: 'long stored text', createdAt: 3000, pending: true, owner: { deviceId: 'desk', name: 'Desk', ts: 1 } };
+  const stored = { messages: [own] };
+  const incoming = { messages: [{ ...own, content: 'short' }] };
+  assert.strictEqual(Lease.keepNewerReplies(stored, incoming, 'desk').messages[0].content, 'short');
+});
+
+test('an agent\'s steps and questions in a phone\'s reply are kept in the computer\'s copy, and an answer from either device sticks', async () => {
+  const storage = await pcStorage();
+  const made = await storage.createChat({ title: 'Disk' });
+  await storage.saveChat({ ...made, messages: [{ id: 'q', role: 'user', content: 'Clean my disk', createdAt: 1 }] });
+  const asked = [];
+  const { h } = hub(storage, { onAsk: (chatId, a) => asked.push({ chatId, a }) });
+  let answer;
+  const waiting = new Promise((r) => { answer = r; });
+  const run = h.remoteChat({ ...phoneRequest(made.id), provider: 'hermes' }, { emit() {} }, async (onDelta, signal, onInfo) => {
+    onInfo({ kind: 'tool', id: 't1', label: 'du -sh ~/Library/Caches', status: 'running' });
+    onInfo({ kind: 'approval', runId: 'run_9', approvalId: 'a1', command: 'rm -rf ~/Library/Caches/old', description: 'delete old caches', choices: ['once', 'session', 'always', 'deny'] });
+    onDelta('Waiting for you…');
+    await waiting;
+    onInfo({ kind: 'tool', id: 't1', status: 'completed' });
+    onDelta(' Freed 2 GB.');
+    return { text: 'Waiting for you… Freed 2 GB.' };
+  });
+  for (let i = 0; i < 100 && !((await lastMessage(storage, made.id)).approvals || []).length; i++) await sleep(20);
+  const mid = await lastMessage(storage, made.id);
+  // The question is in the computer's chat, answerable here with this computer's Hermes.
+  assert.deepStrictEqual(mid.approvals.map((a) => [a.runId, a.approvalId, a.state, a.provider]), [['run_9', 'a1', 'pending', 'hermes']]);
+  assert.strictEqual(mid.tools[0].label, 'du -sh ~/Library/Caches');
+  assert.strictEqual(asked.length, 1);
+  assert.strictEqual(asked[0].chatId, made.id);
+  // Answered (here, or from the phone through this computer).
+  assert.strictEqual(h.answered({ runId: 'run_9', approvalId: 'a1', choice: 'once' }), true);
+  assert.strictEqual(h.answered({ runId: 'other', choice: 'once' }), false);
+  answer();
+  await run;
+  const done = await lastMessage(storage, made.id);
+  assert.strictEqual(done.content, 'Waiting for you… Freed 2 GB.');
+  assert.strictEqual(done.approvals[0].state, 'once');
+  assert.strictEqual(done.tools[0].status, 'completed');
+  assert.strictEqual(done.agentStatus, undefined);
+});
+
+test('a window save that is behind keeps the computer\'s newer reply, with the answer given in the window', () => {
+  const ask = { runId: 'run_9', approvalId: 'a1', command: 'rm', state: 'pending' };
+  const stored = { messages: [{ id: 'r1', role: 'assistant', content: 'Waiting for you… still working', pending: true, owner: { deviceId: 'phone-1', ts: 1 }, approvals: [ask] }] };
+  const incoming = { messages: [{ id: 'r1', role: 'assistant', content: 'Waiting', pending: true, owner: { deviceId: 'phone-1', ts: 1 }, approvals: [{ ...ask, state: 'once' }] }] };
+  const out = Lease.keepNewerReplies(stored, incoming, 'desk').messages[0];
+  assert.strictEqual(out.content, 'Waiting for you… still working');
+  assert.strictEqual(out.approvals[0].state, 'once');
 });

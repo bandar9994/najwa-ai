@@ -96,6 +96,17 @@ public class NetPlugin extends Plugin {
         });
     }
 
+    /**
+     * { on } A reply is being written (on: true) or no longer: Android keeps
+     * the app and its network going in the background meanwhile (with a
+     * notification), so leaving the app doesn't cut the reply off.
+     */
+    @PluginMethod
+    public void replying(PluginCall call) {
+        DownloadService.replying(getContext().getApplicationContext(), Boolean.TRUE.equals(call.getBoolean("on", false)));
+        call.resolve();
+    }
+
     @PluginMethod
     public void cancel(PluginCall call) {
         String id = call.getString("id");

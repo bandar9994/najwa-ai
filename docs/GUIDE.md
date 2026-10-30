@@ -199,6 +199,8 @@ You can keep writing while a reply is written, as in Claude:
 - **Otherwise** your message waits above the message box and goes as soon as the reply is done (several go together as one). **Send now** stops the reply where it is (marked "Stopped here to answer your next message") and sends it right away. ✎ takes it back to edit.
 - The red ■ stops the reply; anything waiting then goes back into the box instead of being sent.
 
+**Leaving the app while it replies.** On Android, Najwa AI keeps writing in the background, with a small "Writing a reply…" notification while it does. If a reply is cut off anyway (you swiped the app away, the phone closed it, or on iPhone, which allows only about 30 seconds in the background), it is finished by itself when you open the app again: a Hermes Agent reply follows Hermes, which kept working; any other model carries on from where its text stopped. A reply your computer writes for the phone (a model "On your computer") goes on there even when the phone is closed, and arrives by sync. When it asks for permission, the question shows on the computer too.
+
 ### Using it away from home
 
 To use your computer's models from your phone anywhere (not only on your home Wi-Fi), install [Tailscale](https://tailscale.com) on both the computer and the phone and sign in with the same account. Najwa AI finds the computer over Tailscale by itself.
