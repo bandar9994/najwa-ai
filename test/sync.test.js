@@ -714,6 +714,18 @@ test('a device says what it pushed, and soon() keeps the wait it already has', a
   pc.sync.soon();
   assert.strictEqual(pc.sync.timer, timer);
   assert.strictEqual(pc.sync.timerDue, due);
+  // Even when the clock ticks while the wait is worked out (a slow machine).
+  const realNow = Date.now;
+  let reads = 0;
+  const base = realNow();
+  Date.now = () => base + (reads++ % 2);
+  try {
+    pc.sync.soon();
+    assert.strictEqual(pc.sync.timer, timer);
+    assert.strictEqual(pc.sync.timerDue, due);
+  } finally {
+    Date.now = realNow;
+  }
   pc.sync.stop && pc.sync.stop();
   clearTimeout(pc.sync.timer);
   pc.sync.timer = null;

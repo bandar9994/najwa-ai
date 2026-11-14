@@ -952,7 +952,10 @@ class Sync {
   // a streaming reply turns into one upload instead of dozens.
   soon() {
     if (!this.config) return;
-    const due = Date.now() + Math.max(4000, this.lastPush + 20000 - Date.now());
+    // One reading of the clock: two could straddle a millisecond and make the
+    // same wait look 1 ms earlier, which would start it over.
+    const now = Date.now();
+    const due = now + Math.max(4000, this.lastPush + 20000 - now);
     // Keep a wait that is already running: a reply being written changes the
     // chat every few seconds, and starting the wait over each time would put
     // the upload off until the reply is done (so another device couldn't
