@@ -18,6 +18,7 @@
 // hash, so the same image in the same place is recognised in the KV cache.
 
 #include "balimda_engine.h"
+#include "chat_formats.h"
 
 #include <algorithm>
 #include <chrono>
@@ -199,6 +200,9 @@ std::string apply_template(const be_engine & e, const std::vector<std::string> &
         }
         return n;
     };
+    // Formats llama.cpp doesn't have yet (chat_formats.h): prompting these in
+    // ChatML makes the model write both sides of the chat.
+    if (chat_formats::is_gemma4(e.tmpl)) return chat_formats::gemma4(roles, contents, true);
     int32_t n = run(e.tmpl.empty() ? nullptr : e.tmpl.c_str());
     if (n < 0) n = run("chatml");  // unknown template: ChatML works for most small models
     if (n < 0) return {};

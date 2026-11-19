@@ -8,6 +8,7 @@
 
 import { registerPlugin } from '@capacitor/core';
 import { fitToContext } from './context.js';
+import { turnGuard } from '../../src/turn-guard.js';
 
 const Llama = registerPlugin('Llama');
 
@@ -267,9 +268,13 @@ export const nativeEngine = {
 
     const requestId = `r${Date.now()}-${counter++}`;
     let text = '';
+    // A reply that starts writing the next turn ends there (turn-guard.js).
+    const guard = turnGuard((safe) => {
+      text += safe;
+      onDelta(safe);
+    });
     tokenListeners.set(requestId, (piece) => {
-      text += piece;
-      onDelta(piece);
+      if (!guard.push(piece)) Llama.stop({ requestId }).catch(() => {});
     });
     statusListeners.set(requestId, (evt) => {
       if (evt.device && onInfo) onInfo({ device: evt.device });
@@ -288,8 +293,15 @@ export const nativeEngine = {
         temperature,
         background: !!req.background
       });
-      if (stopReason === 'aborted') throw new DOMException('Aborted', 'AbortError');
-      return { text, stopReason, stats: stats ? { engine: 'llama.cpp (native)', ...stats, messagesTotal: req.messages.length } : stats };
+      guard.end();
+      // Cut off while thinking: the thought is closed, so it isn't shown as still going.
+      if (guard.stopped && text.lastIndexOf('<think>') > text.lastIndexOf('</think>')) {
+        text += '</think>';
+        onDelta('</think>');
+      }
+      // Stopped by the guard, not by the user: the reply simply ended.
+      if (stopReason === 'aborted' && !guard.stopped) throw new DOMException('Aborted', 'AbortError');
+      return { text, stopReason: guard.stopped ? 'end_turn' : stopReason, stats: stats ? { engine: 'llama.cpp (native)', ...stats, messagesTotal: req.messages.length } : stats };
     } finally {
       tokenListeners.delete(requestId);
       statusListeners.delete(requestId);

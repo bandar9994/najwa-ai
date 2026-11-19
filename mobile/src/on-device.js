@@ -8,6 +8,7 @@
 
 import { Wllama, LoggerWithoutDebug } from '@wllama/wllama';
 import { fitToContext } from './context.js';
+import { turnGuard } from '../../src/turn-guard.js';
 
 // Small instruction-tuned models that fit comfortably on a phone.
 // (Single files must stay under 2 GB for WebAssembly.)
@@ -196,7 +197,12 @@ export const onDevice = {
       const textMessages = req.messages.map(({ role, content }) => ({ role, content: content || '(a picture)' }));
       const history = fitToContext(textMessages, req.system, ctx, Math.min(replyTokens, Math.floor(ctx / 4)));
       const messages = req.system ? [{ role: 'system', content: req.system }, ...history] : history;
-      const params = { messages, stream: true, max_tokens: replyTokens, abortSignal: signal };
+      // Our own stop, so a reply that starts writing the next turn can be ended
+      // there (turn-guard.js) as well as by the user.
+      const stop = new AbortController();
+      const onAbort = () => stop.abort();
+      if (signal) signal.addEventListener('abort', onAbort, { once: true });
+      const params = { messages, stream: true, max_tokens: replyTokens, abortSignal: stop.signal };
       if (req.temperature != null && !Number.isNaN(req.temperature)) params.temperature = req.temperature;
 
       let text = '';
@@ -204,32 +210,48 @@ export const onDevice = {
       let stopReason = 'end_turn';
       let pieces = 0;
       let firstAt = 0;
+      const show = (safe) => {
+        text += safe;
+        onDelta(safe);
+      };
+      const guard = turnGuard(show);
       const out = (piece) => {
         if (!firstAt) firstAt = performance.now();
         pieces++;
-        text += piece;
-        onDelta(piece);
+        if (!guard.push(piece)) stop.abort();
       };
       const started = performance.now();
       const stream = await w.createChatCompletion(params);
-      for await (const chunk of stream) {
-        const choice = chunk.choices && chunk.choices[0];
-        if (!choice) continue;
-        const delta = choice.delta || {};
-        // Reasoning models (Qwen 3, DeepSeek-R1) stream their thoughts separately.
-        if (delta.reasoning_content) {
-          if (!thinking) out('<think>');
-          thinking = true;
-          out(delta.reasoning_content);
+      try {
+        for await (const chunk of stream) {
+          if (guard.stopped) break;
+          const choice = chunk.choices && chunk.choices[0];
+          if (!choice) continue;
+          const delta = choice.delta || {};
+          // Reasoning models (Qwen 3, DeepSeek-R1) stream their thoughts separately.
+          if (delta.reasoning_content) {
+            if (!thinking) out('<think>');
+            thinking = true;
+            out(delta.reasoning_content);
+          }
+          if (delta.content) {
+            if (thinking) out('</think>\n\n');
+            thinking = false;
+            out(delta.content);
+          }
+          if (choice.finish_reason === 'length') stopReason = 'max_tokens';
         }
-        if (delta.content) {
-          if (thinking) out('</think>\n\n');
-          thinking = false;
-          out(delta.content);
-        }
-        if (choice.finish_reason === 'length') stopReason = 'max_tokens';
+      } catch (err) {
+        // Ended by the guard (not the user): the reply is just finished.
+        if (!guard.stopped || (signal && signal.aborted)) throw err;
+      } finally {
+        if (signal) signal.removeEventListener('abort', onAbort);
       }
-      if (thinking) out('</think>');
+      if (thinking && !guard.stopped) out('</think>');
+      guard.end();
+      // Cut off while thinking: the thought is closed, so it isn't shown as still going.
+      if (guard.stopped && text.lastIndexOf('<think>') > text.lastIndexOf('</think>')) show('</think>');
+      if (guard.stopped) stopReason = 'end_turn';
       // Streamed pieces are about one token each.
       const stats = {
         engine: 'WebAssembly',
