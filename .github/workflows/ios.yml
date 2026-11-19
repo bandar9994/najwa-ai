@@ -69,6 +69,8 @@ jobs:
           fi
           gh release upload ios-latest Najwa-AI-iOS-unsigned.ipa --clobber
           gh release edit ios-latest --title "Najwa AI for iPhone (latest build)" --notes "$notes"
+          # The release's date is the update's date in app stores that track it.
+          bash scripts/refresh-release.sh ios-latest
       # Merged changes go to TestFlight: signed in the cloud with the App Store
       # Connect API key (Xcode creates the certificate and profile itself), then
       # uploaded. Testers get the new build in the TestFlight app.

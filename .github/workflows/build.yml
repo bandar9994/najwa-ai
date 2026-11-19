@@ -93,6 +93,10 @@ jobs:
     permissions:
       contents: write
     steps:
+      # Only for scripts/refresh-release.sh.
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: scripts
       - uses: actions/download-artifact@v8
         with:
           path: artifacts
@@ -127,3 +131,5 @@ jobs:
             gh release delete-asset desktop-latest "$old" --yes || true
           done
           gh release edit desktop-latest --title "Najwa AI for Windows, macOS and Linux (latest build)" --notes "$notes"
+          # The release's date is the update's date in app stores that track it.
+          bash scripts/refresh-release.sh desktop-latest
