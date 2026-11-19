@@ -67,3 +67,22 @@ test('the engine uses the Gemma 4 format before falling back to ChatML', () => {
   const chatml = src.indexOf('run("chatml")');
   assert.ok(gemma > 0 && chatml > gemma);
 });
+
+test('a model file with no chat template gets the format of its own turn tokens, not ChatML', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'native', 'llama', 'engine', 'balimda_engine.cpp'), 'utf8');
+  // be_load picks the fallback from the model's tokens.
+  assert.match(src, /e->fallback = fallback_template\(e->vocab\);/);
+  // Gemma 4's tokens are checked before Gemma 3's, and both before the ChatML default.
+  const body = src.slice(src.indexOf('std::string fallback_template('), src.indexOf('std::string apply_template('));
+  const order = ['"<|turn>"', '"<start_of_turn>"', '"<|start_header_id|>"', '"<|im_start|>"', 'return "chatml";\n}'].map((t) => body.indexOf(t));
+  assert.ok(order.every((at, i) => at > 0 && (i === 0 || at > order[i - 1])), `fallback order ${order}`);
+  assert.match(body, /return "gemma4";/);
+  assert.match(body, /return "gemma";/);
+  // apply_template: Gemma 4 (by template or by tokens) first, then the file's template, then the fallback.
+  const gemma4 = src.indexOf('chat_formats::is_gemma4(e.tmpl) || e.fallback == "gemma4"');
+  const fallback = src.indexOf('run(e.fallback.c_str())');
+  const chatml = src.indexOf('run("chatml")');
+  assert.ok(gemma4 > 0 && fallback > gemma4 && chatml > fallback);
+  // No template in the file no longer means llama.cpp's default (ChatML).
+  assert.doesNotMatch(src, /run\(e\.tmpl\.empty\(\) \? nullptr/);
+});

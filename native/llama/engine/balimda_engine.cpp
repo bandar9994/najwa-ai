@@ -59,7 +59,8 @@ struct be_engine {
     mtmd_context * vision = nullptr;  // the image part, when loaded
     std::vector<llama_token> cached;  // tokens currently in the KV cache (images as negative ids)
     std::vector<llama_pos> cached_pos;  // the position of each (an image's tokens share its first)
-    std::string tmpl;                 // chat template ("" = built-in default)
+    std::string tmpl;                 // the model's chat template ("" = none in the file)
+    std::string fallback = "chatml";  // a known format for this model, when its template is missing or unknown
     std::string offload;              // e.g. "offloaded 29/29 layers to GPU"
     // Where the kept part of the chat started last time (when it had to be
     // shortened). Starting there again while it fits keeps the start of the
@@ -183,6 +184,27 @@ int decode(llama_context * ctx, const llama_token * tokens, int32_t n, llama_pos
     return rc;
 }
 
+// Whether `text` is one special token of this model (e.g. Gemma's "<start_of_turn>").
+bool has_special_token(const llama_vocab * vocab, const char * text) {
+    llama_token out[4];
+    const int32_t n = llama_tokenize(vocab, text, int32_t(std::strlen(text)), out, 4, false, true);
+    return n == 1 && (llama_vocab_get_attr(vocab, out[0]) & (LLAMA_TOKEN_ATTR_CONTROL | LLAMA_TOKEN_ATTR_USER_DEFINED)) != 0;
+}
+
+// The chat format to use when a model's file has no chat template, or one
+// llama.cpp doesn't know: the one whose turn tokens this model has. ChatML for
+// any other model was wrong for Gemma: it read "<|im_start|>" as plain text,
+// never ended its turn, and wrote both sides of a made-up chat.
+std::string fallback_template(const llama_vocab * vocab) {
+    if (has_special_token(vocab, "<|turn>") && has_special_token(vocab, "<turn|>")) return "gemma4";  // chat_formats.h
+    if (has_special_token(vocab, "<start_of_turn>")) return "gemma";
+    if (has_special_token(vocab, "<|start_header_id|>")) return "llama3";
+    if (has_special_token(vocab, "<|im_start|>")) return "chatml";
+    if (has_special_token(vocab, "<|user|>") && has_special_token(vocab, "<|end|>")) return "phi3";
+    if (has_special_token(vocab, "<|START_OF_TURN_TOKEN|>")) return "command-r";
+    return "chatml";
+}
+
 std::string apply_template(const be_engine & e, const std::vector<std::string> & roles,
                            const std::vector<std::string> & contents) {
     std::vector<llama_chat_message> msgs;
@@ -200,11 +222,15 @@ std::string apply_template(const be_engine & e, const std::vector<std::string> &
         }
         return n;
     };
-    // Formats llama.cpp doesn't have yet (chat_formats.h): prompting these in
+    // Formats llama.cpp doesn't have yet (chat_formats.h): Gemma 4's, from its
+    // template or, with none in the file, from its turn tokens. Prompting it in
     // ChatML makes the model write both sides of the chat.
-    if (chat_formats::is_gemma4(e.tmpl)) return chat_formats::gemma4(roles, contents, true);
-    int32_t n = run(e.tmpl.empty() ? nullptr : e.tmpl.c_str());
-    if (n < 0) n = run("chatml");  // unknown template: ChatML works for most small models
+    if (chat_formats::is_gemma4(e.tmpl) || e.fallback == "gemma4") return chat_formats::gemma4(roles, contents, true);
+    // The model's own template, or (none in its file, or one llama.cpp doesn't
+    // know) the format its turn tokens show (fallback_template).
+    int32_t n = e.tmpl.empty() ? -1 : run(e.tmpl.c_str());
+    if (n < 0) n = run(e.fallback.c_str());
+    if (n < 0) n = run("chatml");
     if (n < 0) return {};
     return std::string(buf.data(), n);
 }
@@ -273,6 +299,8 @@ be_engine * be_load(const char * path, int n_ctx, int n_gpu_layers, int n_thread
     e->vocab = llama_model_get_vocab(model);
     const char * tmpl = llama_model_chat_template(model, nullptr);
     if (tmpl) e->tmpl = tmpl;
+    e->fallback = fallback_template(e->vocab);
+    if (!tmpl) LOGI("no chat template in the model; using the %s format", e->fallback.c_str());
     {
         std::lock_guard<std::mutex> lock(log_mutex);
         e->offload = last_offload;
