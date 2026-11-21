@@ -1044,7 +1044,7 @@ function statsBadge(st) {
     // How much of the conversation the model could see.
     st.messagesSent != null && st.messagesTotal
       ? `The model saw ${Math.min(st.messagesSent, st.messagesTotal)} of ${st.messagesTotal} messages in this chat` +
-        (st.chatTokens && st.contextSize ? ` (${st.chatTokens.toLocaleString()} of ${st.contextSize.toLocaleString()} tokens of its memory)` : '') +
+        (st.chatTokens && st.contextSize ? ` (${st.chatTokens.toLocaleString(I18n.locale())} of ${st.contextSize.toLocaleString(I18n.locale())} tokens of its memory)` : '') +
         (st.messagesSent < st.messagesTotal ? '. Older messages didn\'t fit: raise "Memory for the conversation" in Settings → Models & providers to include more.' : '')
       : null
   ].filter(Boolean).join('\n');
@@ -1683,7 +1683,7 @@ async function addPictures(files) {
       continue;
     }
     attached.push(r.file);
-    if (r.file.cut) toast(`${r.file.name} is long: only its first ${AttachFiles.MAX_CHARS.toLocaleString()} characters are attached.`, 6000);
+    if (r.file.cut) toast(`${r.file.name} is long: only its first ${AttachFiles.MAX_CHARS.toLocaleString(I18n.locale())} characters are attached.`, 6000);
   }
   drawPictures();
 }
@@ -1795,7 +1795,7 @@ function onVoiceEvent(evt) {
   }
   if (evt.partial != null) {
     if (V.dictating && !V.understanding) {
-      el.input.value = V.dictBase + evt.partial;
+      el.input.value = I18n.latinDigits(V.dictBase + evt.partial);
       autoGrow();
     }
   }
@@ -1827,7 +1827,7 @@ async function toggleDictation() {
   if (session !== V.dictSession) return;
   V.dictating = false;
   V.understanding = false;
-  el.input.value = failed ? V.dictBase.trimEnd() : V.dictBase + (text || '');
+  el.input.value = I18n.latinDigits(failed ? V.dictBase.trimEnd() : V.dictBase + (text || ''));
   if (failed && !V.relisten) toast(errorText(failed), 7000);
   else if (!failed && !text && !V.dictBase && !V.relisten) toast(`Didn't catch that. ${S.info.mobile ? 'Tap' : 'Click'} the mic and try again.`);
   autoGrow();
@@ -2439,7 +2439,7 @@ function historyFor(chat, uptoIndex, model) {
 }
 
 async function send() {
-  const text = el.input.value.trim();
+  const text = I18n.latinDigits(el.input.value.trim());   // Western digits only (see i18n.js)
   const images = pictures.slice();
   const files = attached.slice();
   if (!text && !images.length && !files.length) return;
@@ -2880,7 +2880,7 @@ function memoryBox(onCleanup, field, bind, s) {
   const count = h('div', { class: 'help memory-count' });
   const update = () => {
     const n = s.memory.length;
-    count.textContent = `${n.toLocaleString()} / ${MEMORY_LIMIT.toLocaleString()} characters` +
+    count.textContent = `${n.toLocaleString(I18n.locale())} / ${MEMORY_LIMIT.toLocaleString(I18n.locale())} characters` +
       (n > MEMORY_LIMIT ? ' · longer memory leaves less room for the conversation; it is tidied up the next time something is remembered' : '');
     count.classList.toggle('over', n > MEMORY_LIMIT);
   };
@@ -4161,11 +4161,12 @@ function bindEvents() {
       return;
     }
     if (evt.type !== 'delta') return;
+    const piece = I18n.latinDigits(evt.text);   // Western digits only (see i18n.js)
     if (r.prefix != null) {
-      r.raw += evt.text;
+      r.raw += piece;
       r.msg.content = r.prefix + continuationText(r.raw);
     } else {
-      r.msg.content += evt.text;
+      r.msg.content += piece;
     }
     scheduleMessageRender(r.chat, r.msg);
     voiceReplyUpdated(r.msg);
