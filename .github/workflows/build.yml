@@ -93,7 +93,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      # Only for scripts/refresh-release.sh.
+      # For scripts/refresh-release.sh, whats-new.mjs and release-manifest.js.
       - uses: actions/checkout@v7
         with:
           sparse-checkout: scripts
@@ -137,6 +137,14 @@ jobs:
             gh release create desktop-latest --prerelease --target "$GITHUB_SHA" --title "Najwa AI for Windows, macOS and Linux (latest build)" --notes "$notes"
           fi
           gh release upload desktop-latest out/* --clobber
+          # version.json after the files, so the app never offers an update
+          # whose files aren't there yet (src/updates.js reads it).
+          mkdir -p prev manifest
+          gh release download desktop-latest --pattern version.json --dir prev 2>/dev/null || true
+          cp out/* manifest/
+          printf '%s\n' "$NEW" > whats-new.txt
+          node scripts/release-manifest.js --version "$VERSION" --dir manifest --prev prev/version.json --notes whats-new.txt
+          gh release upload desktop-latest manifest/version.json --clobber
           # Files from before the app was renamed (Balimda -> Najwa AI).
           gh release view desktop-latest --json assets --jq '.assets[].name' | { grep -E '^Balimda-' || true; } | while read -r old; do
             gh release delete-asset desktop-latest "$old" --yes || true

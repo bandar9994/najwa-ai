@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Only in the GitHub (sideloaded) build, merged into src/main's manifest (see
+     build.gradle, najwaStore). Never in the Google Play build, which Play updates. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Updates: Najwa AI installs its own newer version, after the user taps
+         Update (UpdatePlugin.java). Android asks them once to allow it. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+</manifest>

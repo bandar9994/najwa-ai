@@ -1,6 +1,6 @@
 # Najwa AI privacy policy
 
-*Last updated: 28 October 2026*
+*Last updated: 21 November 2026*
 
 Najwa AI, by Bandar Altariqi, is a chat app that keeps your data on your own devices. Najwa AI has no servers and does not collect, sell or share any personal data.
 
@@ -45,7 +45,11 @@ These can be turned off in **Settings → General** (Read links, the browser) an
 
 - **Read links:** when your message contains a link, your device opens that page itself, like a browser would, and gives its text to the model. The website sees an ordinary visit from your device.
 - **A browser for your AI:** models that can use tools may search the web and open pages while answering. Searches go to DuckDuckGo. Pages are opened by your device in a private browser inside Najwa AI, separate from your own browser and without your logins. What to search for and open is decided by the model, based on your conversation.
-- **Connectors** (such as GitHub): when you add one, the model can send requests to that service from your device, with the token you gave it. That service's privacy policy applies. Anything that changes something there waits for your approval first.
+- **Connectors** (such as GitHub): when you add one, the model can send requests to that service from your device, with the token you gave it. That service's privacy policy applies. Anything that changes something there waits for your approval first. A model can also offer to add a connector for you; it is added only if you tap **Add** on the card that shows what it is and where it comes from.
+
+## Updates
+
+The desktop app, the Android app from GitHub and the iPhone app look for a newer version a little after they start and every 6 hours: they download a small file (`version.json`) from Najwa AI's releases on GitHub (`github.com`). Like any download, GitHub can see your device's IP address; nothing else is sent. If there's a new version, the app asks you first; only if you choose **Update** is the new version downloaded from the same place, checked and installed. You can turn the automatic check off in **Settings → About**. The Google Play app doesn't check: Google Play updates it.
 
 ## Sync (optional)
 

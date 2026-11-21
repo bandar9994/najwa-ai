@@ -79,6 +79,14 @@ jobs:
             gh release create ios-latest --prerelease --target "$GITHUB_SHA" --title "Najwa AI for iPhone (latest build)" --notes "$notes"
           fi
           gh release upload ios-latest Najwa-AI-iOS-unsigned.ipa --clobber
+          # version.json after the file: the iPhone app reads it to say a new
+          # version is out (it can't install one itself; see src/updates.js).
+          mkdir -p prev manifest
+          gh release download ios-latest --pattern version.json --dir prev 2>/dev/null || true
+          cp Najwa-AI-iOS-unsigned.ipa manifest/
+          printf '%s\n' "$NEW" > whats-new.txt
+          node scripts/release-manifest.js --version "1.0.${GITHUB_RUN_NUMBER}" --dir manifest --prev prev/version.json --notes whats-new.txt
+          gh release upload ios-latest manifest/version.json --clobber
           gh release edit ios-latest --title "Najwa AI for iPhone (latest build)" --notes "$notes"
           # The release's date is the update's date in app stores that track it.
           bash scripts/refresh-release.sh ios-latest

@@ -97,6 +97,13 @@ jobs:
         run: |
           unzip -l Najwa-AI-android.aab | grep -E 'lib/.*\.so$' | tee native-libs.txt
           grep -q 'libbalimda_llama.so' native-libs.txt || { echo "::error::libbalimda_llama.so is missing from the bundle"; exit 1; }
+      # Google Play updates the app: the bundle must not update itself (no
+      # UpdatePlugin, no permission to install apps; see build.gradle, najwaStore).
+      - name: Check the bundle has no updater
+        run: |
+          if unzip -p Najwa-AI-android.aab base/manifest/AndroidManifest.xml | grep -aq REQUEST_INSTALL_PACKAGES; then echo "::error::The Google Play bundle asks to install apps"; exit 1; fi
+          if unzip -p Najwa-AI-android.aab 'base/dex/*.dex' | grep -aq 'com/bandaraltariqi/najwa/UpdatePlugin'; then echo "::error::The Google Play bundle has UpdatePlugin"; exit 1; fi
+          echo "No updater in the Google Play bundle."
       - uses: actions/upload-artifact@v7
         with:
           name: Najwa-AI-android-aab

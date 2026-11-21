@@ -6,6 +6,7 @@ package com.bandaraltariqi.najwa;
 
 import android.os.Bundle;
 import com.getcapacitor.BridgeActivity;
+import com.getcapacitor.Plugin;
 
 public class MainActivity extends BridgeActivity {
 
@@ -17,6 +18,8 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(NetPlugin.class);
         registerPlugin(BrowsePlugin.class);
         registerPlugin(StorePlugin.class);
+        // The GitHub build's updater (none in the Google Play build).
+        for (Class<? extends Plugin> plugin : ExtraPlugins.list()) registerPlugin(plugin);
         super.onCreate(savedInstanceState);
     }
 }

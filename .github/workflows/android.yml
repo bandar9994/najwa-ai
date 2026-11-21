@@ -61,6 +61,20 @@ jobs:
         run: |
           unzip -l Najwa-AI-android.apk | grep -E 'lib/.*\.so$' | tee native-libs.txt
           grep -q 'libbalimda_llama.so' native-libs.txt || { echo "::error::libbalimda_llama.so is missing from the APK"; exit 1; }
+      # This APK updates itself (UpdatePlugin, and the permission to install
+      # apps); the Google Play build must have neither (build.gradle, najwaStore).
+      - name: Check the updater is in this APK and not in the Google Play build
+        working-directory: android
+        run: |
+          AAPT2=$(ls "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -1)
+          "$AAPT2" dump permissions ../Najwa-AI-android.apk | grep -q 'android.permission.REQUEST_INSTALL_PACKAGES' || { echo "::error::The APK can't install its updates (no REQUEST_INSTALL_PACKAGES)"; exit 1; }
+          unzip -p ../Najwa-AI-android.apk 'classes*.dex' | grep -aq 'com/bandaraltariqi/najwa/UpdatePlugin' || { echo "::error::UpdatePlugin is missing from the APK"; exit 1; }
+          ./gradlew :app:processDebugMainManifest :app:compileDebugJavaWithJavac -PnajwaStore=play --no-daemon -q
+          PLAY_MANIFEST=$(find app/build/intermediates -path '*debug*' -name AndroidManifest.xml -newer ../Najwa-AI-android.apk | grep -i merged | head -1)
+          [ -n "$PLAY_MANIFEST" ] || { echo "::error::Couldn't find the Google Play build's manifest"; exit 1; }
+          if grep -q REQUEST_INSTALL_PACKAGES "$PLAY_MANIFEST"; then echo "::error::The Google Play build asks to install apps"; exit 1; fi
+          if find app/build/intermediates/javac -path '*debug*' -name 'UpdatePlugin*.class' | grep -q .; then echo "::error::The Google Play build has UpdatePlugin"; exit 1; fi
+          echo "The Google Play build has no updater."
       # Google sign-in (Drive sync) recognises the app by its package name and
       # this fingerprint, which goes into the Android OAuth client in Google
       # Cloud. It's public (anyone can read it from the APK).
@@ -101,6 +115,21 @@ jobs:
               --notes "Newest Android build. Download Najwa-AI-android.apk and open it on your phone; later updates install over it and keep your chats. Moving from a build before the app ID change (com.bandaraltariqi.najwa) is a one-time reinstall: sign in to sync and enter your passphrase, and your chats come back through sync."
           fi
           gh release upload android-latest Najwa-AI-android.apk --clobber
+          # What changed since the release before (its tag still points there
+          # until refresh-release.sh moves it): shown by Orion Store and
+          # Obtainium, and by the app when it offers the update.
+          PREV=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/android-latest" --jq .object.sha 2>/dev/null || true)
+          NEW=$(node scripts/whats-new.mjs --platform android --since "$PREV" || true)
+          # version.json after the APK, so the app never offers an update whose
+          # file isn't there yet (src/updates.js). This step only runs for
+          # builds signed with the release key: a phone can't update to a
+          # test-key build.
+          mkdir -p prev manifest
+          gh release download android-latest --pattern version.json --dir prev 2>/dev/null || true
+          cp Najwa-AI-android.apk manifest/
+          printf '%s\n' "$NEW" > whats-new.txt
+          node scripts/release-manifest.js --version "$VERSION" --dir manifest --prev prev/version.json --notes whats-new.txt
+          gh release upload android-latest manifest/version.json --clobber
           gh release delete-asset android-latest Pal-android.apk --yes 2>/dev/null || true
           # Files from before the app was renamed (Balimda -> Najwa AI), and the
           # versioned copies earlier builds added (the title has the version now):
@@ -108,10 +137,6 @@ jobs:
           gh release view android-latest --json assets --jq '.assets[].name' | { grep -E '^Balimda-|^Najwa-AI-v[0-9.]+\.apk$' || true; } | while read -r old; do
             gh release delete-asset android-latest "$old" --yes || true
           done
-          # What changed since the release before (its tag still points there
-          # until refresh-release.sh moves it): shown by Orion Store and Obtainium.
-          PREV=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/android-latest" --jq .object.sha 2>/dev/null || true)
-          NEW=$(node scripts/whats-new.mjs --platform android --since "$PREV" || true)
           NOTES="Najwa AI ${VERSION} for Android (from ${GITHUB_SHA::7}, $(date -u '+%Y-%m-%d %H:%M UTC'))."
           [ -n "$NEW" ] && NOTES="${NOTES}
 
