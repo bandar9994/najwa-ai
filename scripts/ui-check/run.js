@@ -122,6 +122,17 @@ const srv = http.createServer((req, res) => {
   out(`…and on screen, in replies and code too (${JSON.stringify(shown)})`, shown[0] === 'الرد: 123 و 78 ثم 9' && shown[1] === 'x = 42');
   await page.evaluate(() => { document.getElementById('input').value = ''; });
 
+  // --- a reply's direction: by most of its letters, not its first one
+  const dirs = await page.evaluate(() => {
+    const w = renderMarkdown('| الرحلة | المدة |\n|---|---|\n| RUH→JFK ذهاب | ٢٩ س |\n\n- **HPN** مطار يتطلب تغيير IAD↔DCA تجاهله تماماً\n- **LGA** مطار محدود الرحلات\n\n**Turkish Airlines** بـ 1,154$ ذهاب من الرياض إلى نيويورك\n\n`kayak.com/flights/RUH-NYC` من الزر أعلى الصفحة\n\nAn English paragraph stays left to right.\n\n1. First step');
+    const d = (sel) => [...w.querySelectorAll(sel)].map((e) => e.getAttribute('dir')).join(',');
+    return { reply: w.getAttribute('dir'), table: d('table'), cells: d('th, td'), list: d('ul'), items: d('ul > li'), paras: d('p'), ol: d('ol, ol > li') };
+  });
+  out(`an Arabic reply reads right to left, mixed lines and all; English parts left to right (${JSON.stringify(dirs)})`,
+    dirs.reply === 'rtl' && dirs.table === 'rtl' && dirs.cells === 'rtl,rtl,rtl,rtl' && dirs.list === 'rtl' && dirs.items === 'rtl,rtl' && dirs.paras === 'rtl,rtl,ltr' && dirs.ol === 'ltr,ltr');
+  const en = await page.evaluate(() => { const w = renderMarkdown('Flights from **الرياض** to New York, with a short note in Arabic: مرحبا.\n\n- one\n- two'); return [w.getAttribute('dir'), w.querySelector('p').getAttribute('dir'), w.querySelector('ul').getAttribute('dir')].join(','); });
+  out(`an English reply with an Arabic word stays left to right (${en})`, en === 'ltr,ltr,ltr');
+
   // --- phone: windows are sheets from the bottom
   await page.setViewportSize({ width: 390, height: 844 });
   await page.evaluate(() => { document.getElementById('input').value = ''; });

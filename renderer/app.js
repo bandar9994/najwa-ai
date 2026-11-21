@@ -256,21 +256,51 @@ function splitThinking(text) {
   return { thinking: m[1].trim(), done: !!m[2], answer: text.slice(m[0].length) };
 }
 
+// Which way a reply reads (Arabic and other right-to-left scripts, or left to
+// right), by what most of its letters are, not its first one: an Arabic
+// paragraph that starts with "Turkish Airlines" or "HPN" still reads right to
+// left. Code, inline code and link addresses don't count. The reply as a whole
+// sets the side its tables and lists start on; a paragraph or heading that's
+// clearly in the other language (three quarters of its letters) goes its own
+// way, and a mixed one follows the reply. A list's items and a table's cells
+// all go the list's or table's way, so bullets, numbers and columns line up.
+const RTL_LETTER = /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/g;
+const LTR_LETTER = /[A-Za-z\u00C0-\u02AF\u0370-\u052F]/g;
+function letterShare(el) {
+  let text = '';
+  const it = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, { acceptNode: (n) => (n.parentElement && n.parentElement.closest('code, pre') ? 2 : 1) });
+  for (let n = it.nextNode(); n; n = it.nextNode()) text += n.nodeValue;
+  const rtl = (text.match(RTL_LETTER) || []).length;
+  const ltr = (text.match(LTR_LETTER) || []).length;
+  return rtl + ltr ? rtl / (rtl + ltr) : null;
+}
+function layoutDirection(wrap) {
+  const whole = letterShare(wrap);
+  const base = whole != null && whole >= 0.4 ? 'rtl' : 'ltr';
+  wrap.setAttribute('dir', base);
+  const own = (el, fallback) => {
+    const share = letterShare(el);
+    return share == null ? fallback : share >= 0.75 ? 'rtl' : share <= 0.25 ? 'ltr' : fallback;
+  };
+  for (const group of wrap.querySelectorAll('ul, ol, table')) {
+    const parent = group.parentElement && group.parentElement.closest('[dir]');
+    const d = own(group, parent && parent !== wrap ? parent.getAttribute('dir') : base);
+    group.setAttribute('dir', d);
+    for (const part of group.querySelectorAll(group.tagName === 'TABLE' ? 'th, td' : ':scope > li')) part.setAttribute('dir', d);
+  }
+  for (const block of wrap.querySelectorAll('p, h1, h2, h3, h4, h5, h6, blockquote')) {
+    if (block.closest('li, td, th')) continue;   // goes its list's or table's way
+    const around = block.parentElement && block.parentElement.closest('[dir]');
+    block.setAttribute('dir', own(block, around ? around.getAttribute('dir') : base));
+  }
+}
+
 function renderMarkdown(text) {
   const html = DOMPurify.sanitize(marked.parse(text || ''), REPLY_HTML);
   // What a model wrote: never translated (see i18n.js).
   const wrap = h('div', { translate: 'no' });
   wrap.innerHTML = html;
-  // Arabic (and other right-to-left) paragraphs read right to left, each on
-  // its own, so a mixed reply lays out naturally. Code stays left to right.
-  for (const block of wrap.querySelectorAll('p, li, h1, h2, h3, h4, h5, h6, blockquote, td, th')) block.setAttribute('dir', 'auto');
-  // A list goes the way of its first letter, so an Arabic list keeps the room
-  // for its numbers and bullets on the right. ("auto" can't do it: it skips
-  // the items, which have their own direction.)
-  for (const list of wrap.querySelectorAll('ul, ol')) {
-    const first = /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]|[A-Za-z\u00C0-\u02AF\u0370-\u052F]/.exec(list.textContent);
-    list.setAttribute('dir', first && /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/.test(first[0]) ? 'rtl' : 'ltr');
-  }
+  layoutDirection(wrap);
   // Pictures from the internet become links the reader can choose to open.
   for (const img of wrap.querySelectorAll('img')) {
     const inline = img.getAttribute('data-inline');
