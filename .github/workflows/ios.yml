@@ -63,7 +63,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          notes="Newest iPhone build (from ${GITHUB_SHA::7}, $(date -u '+%Y-%m-%d %H:%M UTC')), unsigned. To install it, sign it for your iPhone: upload Najwa-AI-iOS-unsigned.ipa to a signing service (such as Signulous), or use Sideloadly or AltStore with your Apple ID."
+          # What changed since the release before (its tag still points there
+          # until refresh-release.sh moves it).
+          PREV=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/ios-latest" --jq .object.sha 2>/dev/null || true)
+          NEW=$(node scripts/whats-new.mjs --platform ios --since "$PREV" || true)
+          notes="Newest iPhone build, Najwa AI 1.0.${GITHUB_RUN_NUMBER} (from ${GITHUB_SHA::7}, $(date -u '+%Y-%m-%d %H:%M UTC')), unsigned."
+          [ -n "$NEW" ] && notes="${notes}
+
+          What's new:
+          ${NEW}"
+          notes="${notes}
+
+          To install it, sign it for your iPhone: upload Najwa-AI-iOS-unsigned.ipa to a signing service (such as Signulous), or use Sideloadly or AltStore with your Apple ID."
           if ! gh release view ios-latest >/dev/null 2>&1; then
             gh release create ios-latest --prerelease --target "$GITHUB_SHA" --title "Najwa AI for iPhone (latest build)" --notes "$notes"
           fi

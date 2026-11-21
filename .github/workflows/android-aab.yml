@@ -23,7 +23,7 @@ on:
         options: ['internal', 'alpha', 'beta', 'production']
         default: 'internal'
       release_notes:
-        description: "What's new (shown on Google Play, up to 500 characters)"
+        description: "What's new (shown on Google Play, up to 500 characters). Leave empty to list the changes since the last upload"
         required: false
         default: ''
   push:
@@ -34,6 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      actions: read  # to find the last upload, for "What's new"
     env:
       BALIMDA_KEYSTORE_BASE64: ${{ secrets.BALIMDA_KEYSTORE_BASE64 }}
       BALIMDA_KEYSTORE_PASSWORD: ${{ secrets.BALIMDA_KEYSTORE_PASSWORD }}
@@ -106,7 +107,15 @@ jobs:
         env:
           TRACK: ${{ inputs.track || 'internal' }}
           NOTES: ${{ inputs.release_notes }}
+          GH_TOKEN: ${{ github.token }}
         run: |
+          # No notes typed in: what changed since the last upload (the commit of
+          # this workflow's last successful run), as Google Play's "What's new".
+          if [ -z "$NOTES" ]; then
+            PREV=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/android-aab.yml/runs?status=success&event=workflow_dispatch&per_page=10" \
+              --jq "[.workflow_runs[] | select(.id != $GITHUB_RUN_ID)][0].head_sha // empty" 2>/dev/null || true)
+            NOTES=$(node scripts/whats-new.mjs --platform android --since "$PREV" --max-chars 500 || true)
+          fi
           node scripts/play-upload.mjs --aab Najwa-AI-android.aab --package com.bandaraltariqi.najwa --track "$TRACK" --notes "$NOTES"
           echo "**Google Play**: uploaded to the \`$TRACK\` track" >> "$GITHUB_STEP_SUMMARY"
       - name: Google Play upload skipped

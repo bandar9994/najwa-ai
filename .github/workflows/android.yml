@@ -108,6 +108,18 @@ jobs:
           gh release view android-latest --json assets --jq '.assets[].name' | { grep -E '^Balimda-|^Najwa-AI-v[0-9.]+\.apk$' || true; } | while read -r old; do
             gh release delete-asset android-latest "$old" --yes || true
           done
-          gh release edit android-latest --title "$TITLE" --notes "Najwa AI ${VERSION} for Android (from ${GITHUB_SHA::7}, $(date -u '+%Y-%m-%d %H:%M UTC')). Download Najwa-AI-android.apk and open it on your phone; later updates install over it and keep your chats. Moving from a build before the app ID change (com.bandaraltariqi.najwa) is a one-time reinstall: sign in to sync and enter your passphrase, and your chats come back through sync."
+          # What changed since the release before (its tag still points there
+          # until refresh-release.sh moves it): shown by Orion Store and Obtainium.
+          PREV=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/android-latest" --jq .object.sha 2>/dev/null || true)
+          NEW=$(node scripts/whats-new.mjs --platform android --since "$PREV" || true)
+          NOTES="Najwa AI ${VERSION} for Android (from ${GITHUB_SHA::7}, $(date -u '+%Y-%m-%d %H:%M UTC'))."
+          [ -n "$NEW" ] && NOTES="${NOTES}
+
+          What's new:
+          ${NEW}"
+          NOTES="${NOTES}
+
+          Download Najwa-AI-android.apk and open it on your phone; later updates install over it and keep your chats. Moving from a build before the app ID change (com.bandaraltariqi.najwa) is a one-time reinstall: sign in to sync and enter your passphrase, and your chats come back through sync."
+          gh release edit android-latest --title "$TITLE" --notes "$NOTES"
           # The release's date is the update's date in Obtainium and Orion Store.
           bash scripts/refresh-release.sh android-latest

@@ -121,7 +121,18 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           VERSION="1.0.${GITHUB_RUN_NUMBER}"
-          notes="Najwa AI ${VERSION} for desktop (from ${GITHUB_SHA::7}, $(date -u '+%Y-%m-%d %H:%M UTC')). Windows: Najwa-AI-Windows-Setup.exe. Mac: Najwa-AI-macOS-AppleSilicon.dmg (M1 and newer) or Najwa-AI-macOS-Intel.dmg. Linux: Najwa-AI-Linux.AppImage or Najwa-AI-Linux.deb."
+          # What changed since the release before (its tag still points there
+          # until refresh-release.sh moves it).
+          PREV=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/desktop-latest" --jq .object.sha 2>/dev/null || true)
+          NEW=$(node scripts/whats-new.mjs --platform desktop --since "$PREV" || true)
+          notes="Najwa AI ${VERSION} for desktop (from ${GITHUB_SHA::7}, $(date -u '+%Y-%m-%d %H:%M UTC'))."
+          [ -n "$NEW" ] && notes="${notes}
+
+          What's new:
+          ${NEW}"
+          notes="${notes}
+
+          Windows: Najwa-AI-Windows-Setup.exe. Mac: Najwa-AI-macOS-AppleSilicon.dmg (M1 and newer) or Najwa-AI-macOS-Intel.dmg. Linux: Najwa-AI-Linux.AppImage or Najwa-AI-Linux.deb."
           if ! gh release view desktop-latest >/dev/null 2>&1; then
             gh release create desktop-latest --prerelease --target "$GITHUB_SHA" --title "Najwa AI for Windows, macOS and Linux (latest build)" --notes "$notes"
           fi
