@@ -1134,6 +1134,16 @@ function fillContent(container, msg) {
 
 const APPROVAL_LABELS = { once: 'Allow once', session: 'Allow for this chat', always: 'Always allow', deny: 'Deny' };
 const APPROVAL_DONE = { once: 'Allowed once', session: 'Allowed for this chat', always: 'Always allowed', deny: 'Denied', expired: 'Not answered in time' };
+// A question of its own kind: 'install' (the model wants to add a connector,
+// src/connector-installer.js) has Add / Don't add.
+function approvalLabel(a, c) {
+  if (a.askKind === 'install') return c === 'deny' ? 'Don\'t add' : 'Add';
+  return APPROVAL_LABELS[c];
+}
+function approvalDone(a) {
+  if (a.askKind === 'install' && (a.state === 'once' || a.state === 'deny')) return a.state === 'deny' ? 'Not added' : 'Added';
+  return APPROVAL_DONE[a.state] || a.state;
+}
 
 function agentEvent(chat, msg, evt) {
   if (evt.kind === 'steer') {
@@ -1150,7 +1160,8 @@ function agentEvent(chat, msg, evt) {
   } else if (evt.kind === 'approval') {
     msg.approvals = msg.approvals || [];
     const origin = evt.origin && evt.origin.id ? { id: String(evt.origin.id), name: String(evt.origin.name || 'another device').slice(0, 60), computer: !!evt.origin.computer } : null;
-    msg.approvals.push({ runId: evt.runId, approvalId: evt.approvalId || null, generation: Number.isInteger(evt.generation) ? evt.generation : null, connectorId: evt.connectorId ? String(evt.connectorId) : null, origin, title: evt.title ? String(evt.title).slice(0, 200) : null, command: String(evt.command || '').slice(0, 2000), description: String(evt.description || '').slice(0, 500), choices: Array.isArray(evt.choices) && evt.choices.length ? evt.choices : ['once', 'deny'], state: 'pending' });
+    const askKind = ['install'].includes(evt.askKind) ? evt.askKind : null;
+    msg.approvals.push({ runId: evt.runId, approvalId: evt.approvalId || null, generation: Number.isInteger(evt.generation) ? evt.generation : null, connectorId: evt.connectorId ? String(evt.connectorId) : null, origin, title: evt.title ? String(evt.title).slice(0, 200) : null, command: String(evt.command || '').slice(0, 2000), description: String(evt.description || '').slice(0, askKind ? 1500 : 500), choices: Array.isArray(evt.choices) && evt.choices.length ? evt.choices : ['once', 'deny'], askKind, state: 'pending' });
     if (S.current !== chat || document.hidden) toast(`${evt.title ? 'A connector' : 'Hermes'} is asking for permission. Open the chat to answer.`, 5000);
   } else if (evt.kind === 'status') {
     msg.agentStatus = String(evt.text).slice(0, 200);
@@ -1243,21 +1254,21 @@ function agentSteps(msg) {
   for (const a of approvals) {
     if (a.state === 'pending' || a.state === 'sending') {
       wrap.append(h('div', { class: 'approval' },
-        h('div', { class: 'approval-title', text: a.title ? `${a.title}?` : 'Hermes is asking for permission' }),
+        h('div', { class: 'approval-title', text: a.title ? (/\?$/.test(a.title) ? a.title : `${a.title}?`) : 'Hermes is asking for permission' }),
         a.description ? h('div', { class: 'approval-why', text: a.description }) : null,
-        a.command ? h('pre', { class: 'approval-command', dir: 'ltr', text: a.command }) : null,
+        a.command ? h('pre', { class: 'approval-command', dir: 'ltr', translate: 'no', text: a.command }) : null,
         approvalPlace(a) === 'elsewhere' ? h('div', { class: 'approval-elsewhere', text: `Waiting for your answer on ${a.origin.name}.` }) : h('div', { class: 'approval-buttons' },
           // A connector's "Always allow" is saved in this device's settings, so
           // only offered on the device that asked.
           ...(a.choices || ['once', 'deny']).filter((c) => APPROVAL_LABELS[c] && !(c === 'always' && a.connectorId && approvalPlace(a) !== 'here')).map((c) => h('button', {
             class: `btn ${c === 'deny' ? 'danger' : c === 'once' ? 'primary' : ''}`,
-            text: APPROVAL_LABELS[c],
+            text: approvalLabel(a, c),
             disabled: a.state === 'sending',
             onclick: () => answerApproval(chat, msg, a, c)
           })))));
     } else {
       wrap.append(h('div', { class: `approval-done ${a.state === 'deny' ? 'denied' : ''}` },
-        h('span', { class: 'approval-label', text: `${a.state === 'deny' ? '✗' : a.state === 'expired' ? '·' : '✓'} ${APPROVAL_DONE[a.state] || a.state}` }),
+        h('span', { class: 'approval-label', text: `${a.state === 'deny' ? '✗' : a.state === 'expired' ? '·' : '✓'} ${approvalDone(a)}` }),
         a.command ? h('code', { text: a.command.length > 80 ? `${a.command.slice(0, 80)}…` : a.command }) : null));
     }
   }
@@ -2967,6 +2978,8 @@ async function onSyncEvent(evt) {
     const fresh = await api.settings.get();
     const computersChanged = JSON.stringify(fresh.computers) !== JSON.stringify(S.settings.computers);
     for (const k of ['assistants', 'memory', 'memoryEnabled', 'autoMemory', 'recallChats', 'computers', 'sharedModifiedAt']) S.settings[k] = fresh[k];
+    // A connector the model added (src/connector-installer.js), approved by the user.
+    if (evt.connectors) S.settings.connectors = fresh.connectors;
     renderSelectors();
     if (computersChanged && S.settings.providers.computer) loadModels();
     for (const draw of memoryViews) draw();

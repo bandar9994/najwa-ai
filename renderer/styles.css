@@ -1010,7 +1010,7 @@ textarea.grow { field-sizing: content; min-height: 6em; max-height: 400px; }
 .agent-done .agent-step { margin: 4px 0 0 16px; }
 .approval { border: 1px solid var(--border-strong); border-inline-start: 3px solid var(--accent); border-radius: 14px; padding: 12px 14px; margin: 6px 0; background: var(--bg-elev); box-shadow: var(--shadow-sm); }
 .approval-title { font-weight: 600; margin-bottom: 4px; }
-.approval-why { font-size: 14px; color: var(--text-dim); margin-bottom: 6px; }
+.approval-why { font-size: 14px; color: var(--text-dim); margin-bottom: 6px; white-space: pre-line; }
 .approval-command { margin: 0 0 10px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-code); font-size: 12.5px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .approval-elsewhere { font-size: 13px; color: var(--text-dim); margin-top: 8px; }
 .approval-buttons { display: flex; flex-wrap: wrap; gap: 6px; }

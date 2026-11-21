@@ -22,7 +22,8 @@ const { startRemoteServer, localAddresses } = require('./src/remote-server');
 const { createVoice } = require('./src/voice-desktop');
 const { readLink } = require('./src/link-reader');
 const { chatWithTools, combineTools, TOOL_KINDS } = require('./src/tool-chat');
-const { connectorHub, connectorsNote, urlOf } = require('./src/connectors');
+const { connectorHub, connectorsNote, capabilitiesNote, urlOf } = require('./src/connectors');
+const { connectorInstaller } = require('./src/connector-installer');
 const { httpTransport } = require('./src/mcp-client');
 const { stdioTransport } = require('./src/mcp-stdio');
 const { localApprovals } = require('./src/local-approvals');
@@ -317,13 +318,37 @@ async function runChat(providerId, req, onDelta, signal, onInfo) {
         system = browsingNote(system, true);
       }
       const mine = req.connectors ? (settings.connectors || []).filter((c) => c.enabled !== false) : [];
+      const connectorOrigin = { id: await computerId(), name: computerName(), computer: true };
+      const connectorAsk = approvals.asker(onInfo, signal, connectorOrigin);
       if (mine.length) {
-        const origin = { id: await computerId(), name: computerName(), computer: true };
-        const set = await connectors.toolset(mine, { approve: approvals.asker(onInfo, signal, origin), allowed: approvals.allowedFor(req.chatId), signal });
+        const set = await connectors.toolset(mine, { approve: connectorAsk, allowed: approvals.allowedFor(req.chatId), signal });
         sets.push(set);
         system = connectorsNote(system, set);
       }
-      const tools = combineTools(sets);
+      // The model can add a connector itself (src/connector-installer.js): the
+      // user approves on a card; its tools are then usable in this reply.
+      let tools = null;
+      if (req.connectors) {
+        sets.push(connectorInstaller({
+          place: 'computer',
+          existing: async () => (await storage.getSettings()).connectors || [],
+          save: async (list) => {
+            const s = await storage.getSettings();
+            s.connectors = list;
+            await storage.saveSettings(s);
+            // The window holds its own copy of the settings: refresh it.
+            send('sync:event', { type: 'changed', chats: [], deleted: [], settings: true, connectors: true });
+          },
+          test: (c) => connectors.test(c),
+          approve: connectorAsk,
+          onAdded: async (c) => {
+            if (tools) tools.add(await connectors.toolset([c], { approve: connectorAsk, allowed: approvals.allowedFor(req.chatId), signal }));
+          }
+        }));
+      }
+      // Say how to get what these tools can't do.
+      system = capabilitiesNote(system, 'computer', { canAdd: !!req.connectors });
+      tools = combineTools(sets);
       if (tools.defs.length) {
         const result = await chatWithTools({ kind: TOOL_KINDS[providerId], cfg, req: { ...request, system }, onDelta, signal, onInfo, tools });
         if (!result.fallback) return result;

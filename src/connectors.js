@@ -198,4 +198,20 @@ function connectorsNote(system, set) {
   return system ? `${system}\n\n${lines.join('\n')}` : lines.join('\n');
 }
 
-module.exports = { connectorHub, connectorsNote, resultOf, GITHUB_URL, urlOf };
+// Added in chats with tools: what to tell a user who asks for something these
+// tools can't do (install a program, add an MCP server), instead of only saying
+// no. `place`: 'computer' or 'phone'; `canAdd`: the model has add_connector
+// (src/connector-installer.js).
+function capabilitiesNote(system, place, { canAdd = false } = {}) {
+  const add = canAdd
+    ? (place === 'phone'
+      ? ' To add an MCP server that\'s on the internet (an https address), use add_connector yourself: find its official page first; the user approves it on a card. One that runs as a program needs Najwa AI on a computer: tell the user to ask there.'
+      : ' To add an MCP server\'s tools, use add_connector yourself (a program started with npx, uvx, bunx or pnpx, or an https address): find its official page or package first; the user approves it on a card, and its tools are yours right after. Keys it needs, the user adds in Settings → Connectors.')
+    : '';
+  const note = place === 'phone'
+    ? `If the user asks for something your tools in this chat can't do (install software, add tools or an MCP server), don't just say no.${add} Otherwise tell them how to get it in Najwa AI. An MCP server on the internet: Settings → Connectors → "Add by address" (its URL). One that runs as a program (for example "npx -y some-mcp") needs Najwa AI on a computer: add it there under Settings → Connectors → "Add a program on this computer", and this phone can use its tools when it chats with that computer's models.`
+    : `If the user asks for something your tools in this chat can't do (install software, add tools or an MCP server), don't just say no.${add} Otherwise tell them how to get it in Najwa AI. To add an MCP server's tools themselves: Settings → Connectors → "Add a program on this computer" for one started with a command (Command: npx, Arguments: -y and the package, one per line), or "Add by address" for one on the internet (its URL). Its tools then work in chats.`;
+  return system ? `${system}\n\n${note}` : note;
+}
+
+module.exports = { connectorHub, connectorsNote, capabilitiesNote, resultOf, GITHUB_URL, urlOf };

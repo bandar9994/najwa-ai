@@ -40,7 +40,9 @@ function localApprovals() {
         if (signal) signal.addEventListener('abort', () => done('deny'), { once: true });
         onInfo({
           kind: 'approval', runId: id, approvalId: null, connectorId: a.connectorId || null, title: a.title, command: a.command, description: a.description,
-          choices: ['once', 'session', 'always', 'deny'], origin
+          choices: Array.isArray(a.choices) && a.choices.length ? a.choices : ['once', 'session', 'always', 'deny'], origin,
+          // A question of its own kind: 'install' (a connector the model wants to add).
+          ...(a.kind ? { askKind: a.kind } : {})
         });
       });
     },
